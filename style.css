@@ -149,6 +149,17 @@ body {
     animation: pop 0.35s ease;
 }
 
+.mode-badge {
+    font-family: var(--font-display);
+    font-size: 0.62rem;
+    letter-spacing: 0.12em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--accent-secondary);
+    color: var(--accent-secondary);
+    background: rgba(188, 19, 254, 0.12);
+}
+
 .timer-block {
     display: flex;
     flex-direction: column;
@@ -248,6 +259,8 @@ body {
 
 .player-card {
     --p: var(--accent-primary);
+    appearance: none;
+    -webkit-appearance: none;
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: 12px;
@@ -256,6 +269,9 @@ body {
     position: relative;
     opacity: 0.62;
     user-select: none;
+    color: inherit;
+    font: inherit;
+    cursor: default;
     transition: opacity 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.2s;
 }
 
@@ -283,6 +299,25 @@ body {
 .player-card.frozen {
     opacity: 0.45;
     filter: saturate(0.4);
+}
+
+.player-card.targetable {
+    cursor: pointer;
+    opacity: 1;
+    border-color: var(--accent-warning);
+    box-shadow: 0 0 14px rgba(255, 184, 0, 0.35);
+    animation: pulseSoft 1s ease-in-out infinite;
+}
+
+.player-card.targetable:hover,
+.player-card.targetable:focus-visible {
+    transform: scale(1.06);
+    outline: 2px solid var(--accent-warning);
+    outline-offset: 2px;
+}
+
+.app-container[data-phase="targeting"] .game-grid {
+    pointer-events: none;
 }
 
 .freeze-tag {
@@ -361,6 +396,12 @@ body {
     width: 100%;
     max-width: min(520px, 92vw);
     aspect-ratio: 1;
+}
+
+.game-grid.cols-4 {
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    max-width: min(420px, 86vw);
 }
 
 .game-grid.board-miss {
@@ -483,6 +524,7 @@ body {
 
 /* —— Power deck —— */
 .power-deck-container {
+    position: relative;
     min-height: 108px;
     padding: 10px 10px calc(12px + var(--safe-bottom));
     background: rgba(5, 5, 16, 0.9);
@@ -797,6 +839,65 @@ body {
 
 .hidden {
     display: none !important;
+}
+
+.coach-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(5, 5, 16, 0.62);
+    backdrop-filter: blur(6px);
+    padding: 18px;
+}
+
+.coach-card {
+    max-width: 360px;
+    width: 100%;
+    background: rgba(12, 16, 32, 0.96);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    padding: 18px 18px 16px;
+    text-align: center;
+    box-shadow: 0 0 28px rgba(0, 243, 255, 0.16);
+}
+
+.coach-card .eyebrow {
+    color: var(--accent-warning);
+    font-family: var(--font-display);
+    letter-spacing: 0.12em;
+    font-size: 0.68rem;
+}
+
+.coach-card h2 {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    margin: 6px 0 8px;
+}
+
+.coach-card p {
+    color: #c8c8d8;
+}
+
+.dedication {
+    margin-top: 8px;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    color: rgba(255, 255, 255, 0.42);
+}
+
+.dedication-mark {
+    position: absolute;
+    right: 10px;
+    bottom: calc(8px + var(--safe-bottom));
+    font-size: 0.62rem;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.28);
+    pointer-events: none;
+    z-index: 3;
+    user-select: none;
 }
 
 /* —— Animations —— */

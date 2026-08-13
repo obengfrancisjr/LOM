@@ -1,6 +1,6 @@
 /**
- * League of Memory (LOM) — UX + mechanics v2
- * Matched pairs stay face-up. Combos, earned powers, strict turn FSM.
+ * League of Memory (LOM) — arena v3
+ * Practice 4×4, first-run coach, targeted Block, bot personas, owner patterns.
  */
 
 const CONFIG = {
@@ -14,6 +14,8 @@ const CONFIG = {
     POWER_EVERY_MATCHES: 2,
     STORAGE_KEY: 'lom.v2',
     PLAYER_COLORS: ['#00f3ff', '#bc13fe', '#00ff9d', '#ffb800', '#ff6b6b', '#4dabf7'],
+    PRACTICE: { GRID_SIZE: 4, PAIRS: 8, TURN_DURATION_MS: 10000 },
+    ENDGAME_OPEN: 6,
 };
 
 const PHASE = {
@@ -21,6 +23,7 @@ const PHASE = {
     IDLE: 'idle',
     FLIPPING: 'flipping',
     RESOLVING: 'resolving',
+    TARGETING: 'targeting',
     BOT: 'bot',
     FROZEN: 'frozen',
     GAMEOVER: 'gameover',
@@ -34,8 +37,22 @@ const DIFFICULTY = {
 
 const BOT_NAMES = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Omega'];
 
+const BOT_PERSONAS = {
+    Alpha: { prefer: 'scanner', useMult: 1.15 },
+    Beta: { prefer: 'block', useMult: 0.85 },
+    Gamma: { prefer: 'shuffle', useMult: 1.05 },
+    Delta: { prefer: 'block', useMult: 0.7 },
+    Omega: { prefer: 'scanner', useMult: 1.25 },
+};
+
+const COACH_STEPS = [
+    { title: 'Flip two cards', body: 'A match stays face-up. Use those landmarks.' },
+    { title: 'Chain for combo', body: 'Keep matching to refill the timer and stack x2, x3…' },
+    { title: 'Tap a rival to Block', body: 'Powers are earned every 2 matches. Block freezes who you tap.' },
+];
+
 const POWERS = {
-    block: { id: 'block', name: 'Block', icon: '⛔', desc: 'Freeze the next opponent' },
+    block: { id: 'block', name: 'Block', icon: '⛔', desc: 'Tap a rival to freeze them' },
     scanner: { id: 'scanner', name: 'Scanner', icon: '👁', desc: 'Reveal two hidden pairs' },
     shuffle: { id: 'shuffle', name: 'Shuffle', icon: '🔀', desc: 'Remix unmatched cards' },
 };
@@ -54,6 +71,10 @@ function shuffleInPlace(arr) {
         [arr[i], arr[j]] = [arr[j], arr[i]];
     }
     return arr;
+}
+
+function haptic(ms) {
+    try { navigator.vibrate?.(ms); } catch { /* no haptic */ }
 }
 
 function loadSave() {
@@ -228,6 +249,8 @@ class Game {
         this.combo = 0;
         this.bestComboRun = 0;
         this.blockedPlayerIndex = -1;
+        this.coachStep = 0;
+        this.matchDifficulty = 'normal';
         this.timer = null;
         this.timerRaf = null;
         this.timerEndsAt = 0;
@@ -236,12 +259,14 @@ class Game {
             name: loadSave().name || 'YOU',
             bots: Number(loadSave().bots) || 3,
             difficulty: loadSave().difficulty || 'normal',
+            mode: loadSave().mode === 'practice' ? 'practice' : 'arena',
         };
         this.ui = {
             grid: document.getElementById('game-grid'),
             players: document.getElementById('players-panel'),
             status: document.getElementById('game-status'),
             turnName: document.getElementById('turn-name'),
+            modeBadge: document.getElementById('mode-badge'),
             comboBadge: document.getElementById('combo-badge'),
             timerFill: document.getElementById('timer-fill'),
             timerDigits: document.getElementById('timer-digits'),
@@ -262,6 +287,15 @@ class Game {
             worldStatus: document.getElementById('world-status'),
             muteBtn: document.getElementById('mute-btn'),
             app: document.querySelector('.app-container'),
+            arenaOpts: document.getElementById('arena-opts'),
+            diffOpts: document.getElementById('diff-opts'),
+            playBtn: document.getElementById('play-btn'),
+            coach: document.getElementById('coach-overlay'),
+            coachStepEl: document.getElementById('coach-step'),
+            coachTitle: document.getElementById('coach-title'),
+            coachBody: document.getElementById('coach-body'),
+            coachNext: document.getElementById('coach-next'),
+            coachSkip: document.getElementById('coach-skip'),
         };
         this.bindEvents();
         this.hydrateLobby();
@@ -277,25 +311,37 @@ class Game {
         });
         this.ui.lobbyBtn.addEventListener('click', () => {
             this.teardown();
+            this.hideCoach(false);
             this.ui.modal.classList.add('hidden');
             this.ui.startOverlay.classList.remove('hidden');
             this.setPhase(PHASE.LOBBY);
             this.toast('Lobby');
             this.ui.turnName.textContent = '—';
             this.hideCombo();
-            this.setTimerDisplay(CONFIG.TURN_DURATION_MS / 1000, 1);
+            this.setTimerDisplay(this.board().TURN_DURATION_MS / 1000, 1);
         });
         this.ui.lobbyForm.addEventListener('submit', (event) => {
             event.preventDefault();
             this.collectSettings();
             this.startGameFlow();
         });
+        this.ui.lobbyForm.querySelectorAll('input[name="mode"]').forEach((input) => {
+            input.addEventListener('change', () => {
+                this.settings.mode = input.value === 'practice' ? 'practice' : 'arena';
+                this.syncModeFields();
+            });
+        });
         this.ui.verifyBtn.addEventListener('click', () => this.handleVerify());
         this.ui.muteBtn.addEventListener('click', () => {
             AudioCtrl.setMuted(!AudioCtrl.muted);
             this.syncMuteButton();
         });
+        this.ui.coachNext?.addEventListener('click', () => this.advanceCoach());
+        this.ui.coachSkip?.addEventListener('click', () => this.hideCoach(true));
         this.ui.grid.addEventListener('keydown', (event) => this.handleGridKey(event));
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') this.cancelBlockTargeting();
+        });
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) this.pauseTimerVisual();
         });
@@ -305,10 +351,14 @@ class Game {
         this.ui.playerName.value = this.settings.name === 'YOU' ? '' : this.settings.name;
         const bots = String(this.settings.bots);
         const diff = this.settings.difficulty;
+        const mode = this.settings.mode === 'practice' ? 'practice' : 'arena';
         const botsInput = this.ui.lobbyForm.querySelector(`input[name="bots"][value="${bots}"]`);
         const diffInput = this.ui.lobbyForm.querySelector(`input[name="diff"][value="${diff}"]`);
+        const modeInput = this.ui.lobbyForm.querySelector(`input[name="mode"][value="${mode}"]`);
         if (botsInput) botsInput.checked = true;
         if (diffInput) diffInput.checked = true;
+        if (modeInput) modeInput.checked = true;
+        this.syncModeFields();
         const best = loadSave().bestScore;
         if (best) this.ui.worldStatus.textContent = `Best human score on this device: ${best}`;
     }
@@ -339,15 +389,20 @@ class Game {
 
     collectSettings() {
         const name = (this.ui.playerName.value || 'YOU').trim().slice(0, 16) || 'YOU';
-        const bots = Number(this.ui.lobbyForm.querySelector('input[name="bots"]:checked')?.value || 3);
-        const difficulty = this.ui.lobbyForm.querySelector('input[name="diff"]:checked')?.value || 'normal';
-        this.settings = { name, bots, difficulty };
+        const mode = this.ui.lobbyForm.querySelector('input[name="mode"]:checked')?.value === 'practice'
+            ? 'practice'
+            : 'arena';
+        const bots = Number(this.ui.lobbyForm.querySelector('input[name="bots"]:checked')?.value || this.settings.bots || 3);
+        const difficulty = this.ui.lobbyForm.querySelector('input[name="diff"]:checked')?.value || this.settings.difficulty || 'normal';
+        this.settings = { ...this.settings, name, bots, difficulty, mode };
         writeSave(this.settings);
+        this.syncModeFields();
     }
 
     setPhase(phase) {
         this.phase = phase;
         this.ui.app?.setAttribute('data-phase', phase);
+        this.ui.app?.classList.toggle('targeting', phase === PHASE.TARGETING);
         this.renderPowers();
     }
 
@@ -372,7 +427,9 @@ class Game {
     }
 
     setupPlayers() {
-        const bots = Math.min(5, Math.max(1, this.settings.bots));
+        const practice = this.isPractice();
+        this.matchDifficulty = practice ? 'easy' : (this.settings.difficulty || 'normal');
+        const bots = practice ? 1 : Math.min(5, Math.max(1, this.settings.bots));
         this.players = [
             new Player(0, this.settings.name, false, CONFIG.PLAYER_COLORS[0]),
         ];
@@ -400,6 +457,8 @@ class Game {
     teardown() {
         this.stopTimer();
         this.clearPending();
+        this.hideCoach(false);
+        if (this.phase === PHASE.TARGETING) this.phase = PHASE.IDLE;
         this.turnToken += 1;
         this.flippedCards = [];
         this.combo = 0;
@@ -423,12 +482,16 @@ class Game {
         this.renderGrid();
         this.renderPlayers();
         this.renderPowers();
+        this.syncModeFields();
+        this.ui.app?.setAttribute('data-mode', this.isPractice() ? 'practice' : 'arena');
+        this.maybeShowCoach();
         this.startTurn();
     }
 
     generateCards() {
         const deck = [];
-        for (let i = 0; i < CONFIG.PAIRS; i++) {
+        const pairs = this.board().PAIRS;
+        for (let i = 0; i < pairs; i++) {
             const icon = ICONS[i % ICONS.length];
             deck.push(new Card(i * 2, icon));
             deck.push(new Card(i * 2 + 1, icon));
@@ -438,6 +501,27 @@ class Game {
 
     getCurrentPlayer() {
         return this.players[this.activePlayerIndex];
+    }
+
+    isPractice() {
+        return this.settings.mode === 'practice';
+    }
+
+    board() {
+        if (this.isPractice()) return CONFIG.PRACTICE;
+        return {
+            GRID_SIZE: CONFIG.GRID_SIZE,
+            PAIRS: CONFIG.PAIRS,
+            TURN_DURATION_MS: CONFIG.TURN_DURATION_MS,
+        };
+    }
+
+    syncModeFields() {
+        const practice = this.isPractice();
+        if (this.ui.arenaOpts) this.ui.arenaOpts.hidden = practice;
+        if (this.ui.diffOpts) this.ui.diffOpts.hidden = practice;
+        if (this.ui.playBtn) this.ui.playBtn.textContent = practice ? 'Enter Drill' : 'Enter Arena';
+        this.ui.modeBadge?.classList.toggle('hidden', !practice);
     }
 
     startTurn() {
@@ -480,7 +564,9 @@ class Game {
             this.processBotTurn(token);
         } else {
             this.setPhase(PHASE.IDLE);
-            this.startTimer(token);
+            if (!this.ui.coach || this.ui.coach.classList.contains('hidden')) {
+                this.startTimer(token);
+            }
         }
     }
 
@@ -511,13 +597,14 @@ class Game {
         const current = document.activeElement;
         if (!current || !current.id?.startsWith('card-')) return;
         const index = Number(current.id.slice(5));
-        const col = index % CONFIG.GRID_SIZE;
-        const row = Math.floor(index / CONFIG.GRID_SIZE);
+        const size = this.board().GRID_SIZE;
+        const col = index % size;
+        const row = Math.floor(index / size);
         let next = index;
-        if (event.key === 'ArrowRight') next = row * CONFIG.GRID_SIZE + ((col + 1) % CONFIG.GRID_SIZE);
-        else if (event.key === 'ArrowLeft') next = row * CONFIG.GRID_SIZE + ((col + CONFIG.GRID_SIZE - 1) % CONFIG.GRID_SIZE);
-        else if (event.key === 'ArrowDown') next = ((row + 1) % CONFIG.GRID_SIZE) * CONFIG.GRID_SIZE + col;
-        else if (event.key === 'ArrowUp') next = ((row + CONFIG.GRID_SIZE - 1) % CONFIG.GRID_SIZE) * CONFIG.GRID_SIZE + col;
+        if (event.key === 'ArrowRight') next = row * size + ((col + 1) % size);
+        else if (event.key === 'ArrowLeft') next = row * size + ((col + size - 1) % size);
+        else if (event.key === 'ArrowDown') next = ((row + 1) % size) * size + col;
+        else if (event.key === 'ArrowUp') next = ((row + size - 1) % size) * size + col;
         else if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
             this.handleCardClick(index);
@@ -569,6 +656,7 @@ class Game {
 
             this.showCombo(this.combo);
             this.floatPoints(points, player.color);
+            haptic(this.combo > 1 ? [10, 30, 18] : 16);
             this.toast(this.combo > 1 ? `Combo x${this.combo} · +${points}` : `Match · +${points}`);
 
             this.schedule(() => {
@@ -605,6 +693,7 @@ class Game {
             }, 480);
         } else {
             AudioCtrl.playMiss();
+            haptic(12);
             this.combo = 0;
             this.hideCombo();
             this.toast('Miss');
@@ -670,7 +759,7 @@ class Game {
 
     startTimer(token, refill = false) {
         this.stopTimer(false);
-        const duration = CONFIG.TURN_DURATION_MS;
+        const duration = this.board().TURN_DURATION_MS;
         this.timerEndsAt = performance.now() + duration;
         this.ui.timerFill.style.transition = 'none';
         this.ui.timerFill.style.width = '100%';
@@ -727,6 +816,7 @@ class Game {
         const s = Math.max(0, seconds);
         this.ui.timerDigits.textContent = s.toFixed(1);
         this.ui.timerBar?.setAttribute('aria-valuenow', String(Math.ceil(s)));
+        this.ui.timerBar?.setAttribute('aria-valuemax', String(Math.round(this.board().TURN_DURATION_MS / 1000)));
         if (ratio != null && this.timer === null) {
             this.ui.timerFill.style.width = `${Math.max(0, Math.min(1, ratio)) * 100}%`;
         }
@@ -746,6 +836,10 @@ class Game {
     activatePower(powerType) {
         if (!this.canHumanAct()) return;
         if (this.flippedCards.length > 0) return;
+        if (powerType === 'block') {
+            this.beginBlockTargeting();
+            return;
+        }
         this.consumePower(this.getCurrentPlayer(), powerType);
     }
 
@@ -759,26 +853,73 @@ class Game {
             this.toast('Nothing left to shuffle');
             return false;
         }
+        if (powerType === 'block') {
+            return this.useBlockPower(player);
+        }
         AudioCtrl.playPower();
+        haptic(18);
         player.powers[powerType] -= 1;
         this.renderPowers();
-        if (powerType === 'block') this.useBlockPower(player);
         if (powerType === 'scanner') this.useScannerPower(player);
         if (powerType === 'shuffle') this.useShufflePower(player);
         return true;
     }
 
     useBlockPower(player) {
-        let next = (this.activePlayerIndex + 1) % this.players.length;
-        // Prefer freezing an opponent, not yourself in weird edge cases
-        if (this.players[next].id === player.id && this.players.length > 1) {
-            next = (next + 1) % this.players.length;
+        const rivals = this.players
+            .map((p, idx) => ({ p, idx }))
+            .filter(({ p }) => p.id !== player.id && !p.frozen);
+        if (!rivals.length) {
+            this.toast('No rival to freeze');
+            return false;
         }
-        this.blockedPlayerIndex = next;
-        this.players[next].frozen = true;
+        const human = rivals.find(({ p }) => !p.isBot);
+        const pick = (human && human.p.score >= player.score)
+            ? human
+            : rivals.reduce((best, cur) => (cur.p.score > best.p.score ? cur : best));
+        return this.applyBlock(pick.idx);
+    }
+
+    beginBlockTargeting() {
+        const me = this.getCurrentPlayer();
+        if (!me || me.powers.block <= 0) return false;
+        const rivals = this.players.filter((p) => p.id !== me.id && !p.frozen);
+        if (!rivals.length) {
+            this.toast('No rival to freeze');
+            return false;
+        }
+        this.setPhase(PHASE.TARGETING);
+        this.ui.powerHint.textContent = 'tap a rival · Esc cancel';
+        this.toast('Tap a rival to freeze');
         this.renderPlayers();
-        this.toast(`${this.players[next].name} will be frozen`);
+        return true;
+    }
+
+    cancelBlockTargeting() {
+        if (this.phase !== PHASE.TARGETING) return;
+        this.setPhase(PHASE.IDLE);
+        this.ui.powerHint.textContent = '';
+        this.renderPlayers();
+        this.toast('Block cancelled');
+    }
+
+    applyBlock(targetIndex) {
+        const target = this.players[targetIndex];
+        const caster = this.getCurrentPlayer();
+        if (!target || !caster || target.id === caster.id || target.frozen) return false;
+        if (caster.powers.block <= 0) return false;
+        if (!caster.isBot && this.phase !== PHASE.TARGETING) return false;
+        caster.powers.block -= 1;
+        this.blockedPlayerIndex = targetIndex;
+        target.frozen = true;
+        AudioCtrl.playPower();
+        haptic(18);
+        if (this.phase === PHASE.TARGETING) this.setPhase(PHASE.IDLE);
+        this.renderPlayers();
+        this.renderPowers();
+        this.toast(`${target.name} will be frozen`);
         this.ui.powerHint.textContent = 'block armed';
+        return true;
     }
 
     useScannerPower(player) {
@@ -838,7 +979,7 @@ class Game {
 
     processBotTurn(token) {
         const bot = this.getCurrentPlayer();
-        const profile = DIFFICULTY[this.settings.difficulty] || DIFFICULTY.normal;
+        const profile = this.botProfile();
 
         this.ui.turnName.textContent = `${bot.name} thinking…`;
         this.schedule(() => {
@@ -881,18 +1022,38 @@ class Game {
         }, profile.botMs);
     }
 
+    botProfile() {
+        const base = DIFFICULTY[this.matchDifficulty] || DIFFICULTY.normal;
+        const open = this.openIndices().length;
+        if (open > CONFIG.ENDGAME_OPEN) return base;
+        return {
+            ...base,
+            memory: Math.max(0.28, base.memory * 0.72),
+            forget: Math.min(0.45, base.forget + 0.12),
+        };
+    }
+
     maybeBotPower(bot, profile) {
-        if (Math.random() > profile.usePower) return false;
-        if (bot.powers.scanner && this.openIndices().length >= 8) {
+        const persona = BOT_PERSONAS[bot.name] || { prefer: 'scanner', useMult: 1 };
+        if (Math.random() > profile.usePower * persona.useMult) return false;
+
+        const open = this.openIndices().length;
+        if (open <= CONFIG.ENDGAME_OPEN && bot.powers.scanner && this.hiddenPairCount()) {
             return this.consumePower(bot, 'scanner');
         }
+        if (bot.powers[persona.prefer]) {
+            if (persona.prefer === 'scanner' && !this.hiddenPairCount()) {
+                /* fall through */
+            } else {
+                return this.consumePower(bot, persona.prefer);
+            }
+        }
+        if (bot.powers.scanner && this.hiddenPairCount()) return this.consumePower(bot, 'scanner');
         const human = this.players.find((p) => !p.isBot);
-        if (bot.powers.shuffle && human && human.score >= bot.score) {
+        if (bot.powers.shuffle && human && human.score >= bot.score && this.openIndices().length >= 2) {
             return this.consumePower(bot, 'shuffle');
         }
-        if (bot.powers.block) {
-            return this.consumePower(bot, 'block');
-        }
+        if (bot.powers.block) return this.consumePower(bot, 'block');
         return false;
     }
 
@@ -912,7 +1073,7 @@ class Game {
     }
 
     notifyBotsOfCard(index, icon, forceRate = null) {
-        const profile = DIFFICULTY[this.settings.difficulty] || DIFFICULTY.normal;
+        const profile = this.botProfile();
         const rate = forceRate == null ? profile.memory : forceRate;
         this.players.forEach((p) => {
             if (!p.isBot) return;
@@ -1002,12 +1163,13 @@ class Game {
             const owner = this.players.find((p) => p.id === card.ownerId);
             const color = owner?.color || '#00ff9d';
             el.style.setProperty('--owner', color);
+            if (owner) el.dataset.owner = String(owner.id);
             el.setAttribute('aria-label', `Matched ${card.icon}`);
-            // Keep visible to AT as landmarks — do NOT aria-hidden
             el.removeAttribute('aria-hidden');
         } else {
             el.classList.remove('claimed');
             el.style.removeProperty('--owner');
+            delete el.dataset.owner;
             el.setAttribute('aria-label', open ? `Card ${card.icon}` : `Card ${index + 1} face down`);
             el.removeAttribute('aria-hidden');
         }
@@ -1020,6 +1182,13 @@ class Game {
     }
 
     renderGrid() {
+        const size = this.board().GRID_SIZE;
+        this.ui.grid.style.gridTemplateColumns = `repeat(${size}, 1fr)`;
+        this.ui.grid.style.gridTemplateRows = `repeat(${size}, 1fr)`;
+        this.ui.grid.setAttribute('aria-rowcount', String(size));
+        this.ui.grid.setAttribute('aria-colcount', String(size));
+        this.ui.grid.classList.toggle('cols-4', size === 4);
+
         const frag = document.createDocumentFragment();
         this.cards.forEach((card, index) => {
             const el = document.createElement('button');
@@ -1027,8 +1196,8 @@ class Game {
             el.className = 'card';
             el.id = `card-${index}`;
             el.setAttribute('role', 'gridcell');
-            const row = Math.floor(index / CONFIG.GRID_SIZE) + 1;
-            const col = (index % CONFIG.GRID_SIZE) + 1;
+            const row = Math.floor(index / size) + 1;
+            const col = (index % size) + 1;
             el.setAttribute('aria-rowindex', String(row));
             el.setAttribute('aria-colindex', String(col));
 
@@ -1038,7 +1207,10 @@ class Game {
                 el.classList.add('matched', 'claimed');
                 el.disabled = true;
                 const owner = this.players.find((p) => p.id === card.ownerId);
-                if (owner) el.style.setProperty('--owner', owner.color);
+                if (owner) {
+                    el.style.setProperty('--owner', owner.color);
+                    el.dataset.owner = String(owner.id);
+                }
             }
 
             el.setAttribute('aria-pressed', String(open));
@@ -1051,14 +1223,26 @@ class Game {
     }
 
     renderPlayers() {
+        const targeting = this.phase === PHASE.TARGETING;
+        const me = this.getCurrentPlayer();
         const frag = document.createDocumentFragment();
         this.players.forEach((p, idx) => {
-            const el = document.createElement('div');
+            const el = document.createElement('button');
+            el.type = 'button';
             const active = idx === this.activePlayerIndex;
             const willFreeze = idx === this.blockedPlayerIndex || p.frozen;
-            el.className = `player-card ${active ? 'active' : ''} ${p.isBot ? 'is-bot' : ''} ${willFreeze ? 'frozen' : ''}`;
+            const canTarget = targeting && me && p.id !== me.id && !p.frozen;
+            el.className = `player-card ${active ? 'active' : ''} ${p.isBot ? 'is-bot' : ''} ${willFreeze ? 'frozen' : ''} ${canTarget ? 'targetable' : ''}`;
             el.style.setProperty('--p', p.color);
             el.setAttribute('aria-current', active ? 'true' : 'false');
+            el.disabled = targeting && !canTarget;
+            if (canTarget) {
+                el.setAttribute('aria-label', `Freeze ${p.name}`);
+                el.addEventListener('click', () => {
+                    if (this.phase !== PHASE.TARGETING) return;
+                    this.applyBlock(idx);
+                });
+            }
             el.innerHTML = `
                 <div class="player-avatar">${escapeHtml(p.name.slice(0, 2).toUpperCase())}</div>
                 <div class="player-name">${escapeHtml(p.name)}</div>
@@ -1067,11 +1251,13 @@ class Game {
             frag.appendChild(el);
         });
         this.ui.players.replaceChildren(frag);
-        this.ui.players.children[this.activePlayerIndex]?.scrollIntoView({
-            behavior: 'smooth',
-            block: 'nearest',
-            inline: 'center',
-        });
+        if (!targeting) {
+            this.ui.players.children[this.activePlayerIndex]?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'nearest',
+                inline: 'center',
+            });
+        }
     }
 
     renderPowers() {
@@ -1088,6 +1274,12 @@ class Game {
 
         if (this.phase === PHASE.RESOLVING) {
             this.ui.powerCards.innerHTML = '<div class="opp-turn">Resolving…</div>';
+            return;
+        }
+
+        if (this.phase === PHASE.TARGETING) {
+            this.ui.powerCards.innerHTML = '<div class="opp-turn">Tap a rival · Esc cancel</div>';
+            if (this.ui.powerHint) this.ui.powerHint.textContent = 'tap a rival · Esc cancel';
             return;
         }
 
@@ -1108,6 +1300,41 @@ class Game {
         if (this.ui.powerHint && !this.ui.powerHint.textContent) {
             const total = POWER_IDS.reduce((n, id) => n + player.powers[id], 0);
             this.ui.powerHint.textContent = total ? `${total} ready` : 'earn every 2 matches';
+        }
+    }
+
+    maybeShowCoach() {
+        if (!this.isPractice()) return;
+        if (loadSave().seenCoach) return;
+        if (!this.ui.coach) return;
+        this.coachStep = 0;
+        this.paintCoach();
+        this.ui.coach.classList.remove('hidden');
+    }
+
+    paintCoach() {
+        const step = COACH_STEPS[this.coachStep] || COACH_STEPS[0];
+        if (this.ui.coachStepEl) this.ui.coachStepEl.textContent = `${this.coachStep + 1} / ${COACH_STEPS.length}`;
+        if (this.ui.coachTitle) this.ui.coachTitle.textContent = step.title;
+        if (this.ui.coachBody) this.ui.coachBody.textContent = step.body;
+        if (this.ui.coachNext) this.ui.coachNext.textContent = this.coachStep >= COACH_STEPS.length - 1 ? 'Play' : 'Next';
+    }
+
+    advanceCoach() {
+        if (this.coachStep >= COACH_STEPS.length - 1) {
+            this.hideCoach(true);
+            return;
+        }
+        this.coachStep += 1;
+        this.paintCoach();
+    }
+
+    hideCoach(markSeen) {
+        this.ui.coach?.classList.add('hidden');
+        if (markSeen) writeSave({ seenCoach: true });
+        const p = this.getCurrentPlayer();
+        if (markSeen && p && !p.isBot && this.phase === PHASE.IDLE && !this.timer) {
+            this.startTimer(this.turnToken);
         }
     }
 
