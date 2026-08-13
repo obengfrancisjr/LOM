@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>League of Memory — LOM</title>
-    <meta name="description" content="A futuristic 6-player turn-based memory arena. Match pairs, freeze rivals, scan the board. Play now or open it in World App.">
+    <meta name="description" content="A futuristic memory arena. Matched pairs stay on the table. Chain combos, earn powers, outplay the bots.">
     <meta name="theme-color" content="#050510">
     <meta name="color-scheme" content="dark">
     <meta name="mobile-web-app-capable" content="yes">
@@ -18,7 +18,7 @@
     <link rel="canonical" href="https://lom-lyart.vercel.app/">
     <meta property="og:type" content="website">
     <meta property="og:title" content="League of Memory">
-    <meta property="og:description" content="6-player memory arena with power cards. Match pairs, freeze rivals, scan the sector.">
+    <meta property="og:description" content="Matched pairs stay open. Combo chains, earned powers, 1–5 AI rivals.">
     <meta property="og:url" content="https://lom-lyart.vercel.app/">
     <meta property="og:image" content="https://lom-lyart.vercel.app/assets/og.svg">
     <meta name="twitter:card" content="summary_large_image">
@@ -36,13 +36,13 @@
             <p class="eyebrow">World Mini App · Arena</p>
             <h1 class="glow-text title-xl">LOM</h1>
             <p class="subtitle">League of Memory</p>
-            <p class="lede">Match pairs in 7 seconds. Freeze a rival. Scan the sector. Shuffle the unknown.</p>
+            <p class="lede">Matched pairs stay open on the table. Chain combos for bonus points, earn powers mid-fight, freeze rivals.</p>
 
             <form id="lobby-form" class="lobby-form" autocomplete="off">
                 <label class="field">
                     <span>Callsign</span>
                     <input id="player-name" name="callsign" type="text" maxlength="16" placeholder="YOU" aria-describedby="name-hint">
-                    <small id="name-hint">Saved on this device. Change it anytime.</small>
+                    <small id="name-hint">Saved on this device.</small>
                 </label>
 
                 <fieldset class="field">
@@ -73,11 +73,11 @@
             <details class="rules">
                 <summary>How to play</summary>
                 <ul>
-                    <li>Flip two cards. A match is +10 and you keep the turn.</li>
-                    <li>Miss, or let the 7s timer expire, and the next player goes.</li>
-                    <li><strong>Block</strong> freezes the next opponent.</li>
-                    <li><strong>Scanner</strong> flashes two hidden pairs for 3 seconds.</li>
-                    <li><strong>Shuffle</strong> remixes unmatched cards and wipes bot memory.</li>
+                    <li>Flip two cards. A match scores and you keep the turn.</li>
+                    <li><strong>Matched pairs stay face-up</strong> on the table — use them as landmarks.</li>
+                    <li>Chain matches for combo multipliers (x2, x3…). Each match also refills the timer.</li>
+                    <li>Miss or timeout ends your turn. You start with one random power; earn more every 2 matches.</li>
+                    <li><strong>Block</strong> freezes the next opponent. <strong>Scanner</strong> flashes two pairs. <strong>Shuffle</strong> remixes the unknown.</li>
                 </ul>
             </details>
         </div>
@@ -89,22 +89,31 @@
                 <h1 class="glow-text">LOM</h1>
                 <button type="button" id="mute-btn" class="icon-btn" aria-pressed="false" aria-label="Mute sound">🔊</button>
             </div>
-            <div class="game-status" id="game-status" aria-live="polite">Waiting to start…</div>
+            <div class="hud-center">
+                <div class="turn-name" id="turn-name">—</div>
+                <div class="combo-badge hidden" id="combo-badge" aria-live="polite">COMBO x1</div>
+            </div>
+            <div class="timer-block" aria-live="off">
+                <div class="timer-digits" id="timer-digits">7.0</div>
+                <div class="turn-timer-bar" role="progressbar" aria-label="Turn timer" aria-valuemin="0" aria-valuemax="7" aria-valuenow="7">
+                    <div class="timer-fill" id="timer-fill"></div>
+                </div>
+            </div>
         </header>
+
+        <div class="status-toast" id="game-status" aria-live="polite">Waiting to start…</div>
 
         <main class="arena-container">
             <aside class="players-panel" id="players-panel" aria-label="Players and scores"></aside>
 
             <section class="game-grid-wrapper" aria-label="Game board">
+                <div class="float-score" id="float-score" aria-hidden="true"></div>
                 <div class="game-grid" id="game-grid" role="grid" aria-rowcount="6" aria-colcount="6"></div>
-                <div class="turn-timer-bar" role="progressbar" aria-label="Turn timer" aria-valuemin="0" aria-valuemax="7" aria-valuenow="7">
-                    <div class="timer-fill" id="timer-fill"></div>
-                </div>
             </section>
         </main>
 
         <footer class="power-deck-container" role="contentinfo">
-            <div class="deck-label">Power Deck</div>
+            <div class="deck-label">Power Deck <span id="power-hint" class="power-hint"></span></div>
             <div class="power-cards" id="power-cards" role="toolbar" aria-label="Power cards"></div>
         </footer>
 
