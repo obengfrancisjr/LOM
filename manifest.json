@@ -1,0 +1,19 @@
+{
+  "name": "League of Memory",
+  "short_name": "LOM",
+  "description": "Futuristic 6-player turn-based memory arena.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#050510",
+  "theme_color": "#050510",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

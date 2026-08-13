@@ -1,131 +1,175 @@
 /**
- * League of Memory (LOM) - Script v2.0
- * Features: Web Audio API SFX, World ID Integration, Accessibility
- * @author Antigravity Agent
+ * League of Memory (LOM) — playable arena
+ * Local 1-vs-AI memory game, World Mini App aware, no blocking ID gate.
  */
 
-// --- Constants & Config ---
 const CONFIG = {
     GRID_SIZE: 6,
-    TOTAL_CARDS: 36,
     PAIRS: 18,
     TURN_DURATION_MS: 7000,
     MATCH_POINTS: 10,
-    REVEAL_DELAY_MS: 1000,
-    BOT_SPEED_MS: 1500,
+    REVEAL_DELAY_MS: 900,
+    SCAN_MS: 3000,
+    STORAGE_KEY: 'lom.v1',
 };
 
+const DIFFICULTY = {
+    easy: { memory: 0.45, botMs: 1800, usePower: 0.08 },
+    normal: { memory: 0.78, botMs: 1400, usePower: 0.22 },
+    hard: { memory: 0.96, botMs: 900, usePower: 0.38 },
+};
+
+const BOT_NAMES = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Omega'];
+
 const POWERS = {
-    BLOCK: { id: 'block', name: 'Block', icon: '⛔', desc: 'Skip next opp turn', cost: 1 },
-    SCANNER: { id: 'scanner', name: 'Scanner', icon: '👁️', desc: 'Reveal 2 pairs', cost: 1 },
-    SHUFFLE: { id: 'shuffle', name: 'Shuffle', icon: '🔀', desc: 'Shuffle hidden cards', cost: 1 }
+    block: { id: 'block', name: 'Block', icon: '⛔', desc: 'Freeze the next opponent' },
+    scanner: { id: 'scanner', name: 'Scanner', icon: '👁', desc: 'Reveal two hidden pairs' },
+    shuffle: { id: 'shuffle', name: 'Shuffle', icon: '🔀', desc: 'Remix unmatched cards' },
 };
 
 const ICONS = [
     '🚀', '🛸', '🪐', '🌌', '⭐', '☄️',
     '🤖', '👾', '🔋', '⚡', '📡', '🔭',
-    '💎', '💠', '🧿', '🧬', '⚛️', '🦠'
+    '💎', '💠', '🧿', '🧬', '⚛️', '🦠',
 ];
 
-// --- Sci-Fi Sound Engine (Web Audio API) ---
+function shuffleInPlace(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+function loadSave() {
+    try {
+        return JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEY)) || {};
+    } catch {
+        return {};
+    }
+}
+
+function writeSave(patch) {
+    const next = { ...loadSave(), ...patch };
+    try {
+        localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(next));
+    } catch {
+        /* private mode / quota — ignore */
+    }
+    return next;
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
 class SoundEngine {
     constructor() {
-        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        this.ctx = null;
+        this.masterGain = null;
+        this.muted = Boolean(loadSave().muted);
+    }
+
+    ensure() {
+        if (this.ctx) return;
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;
+        this.ctx = new Ctx();
         this.masterGain = this.ctx.createGain();
-        this.masterGain.gain.value = 0.3; // Volume
+        this.masterGain.gain.value = this.muted ? 0 : 0.28;
         this.masterGain.connect(this.ctx.destination);
     }
 
+    resume() {
+        this.ensure();
+        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+    }
+
+    setMuted(muted) {
+        this.muted = muted;
+        this.ensure();
+        if (this.masterGain) this.masterGain.gain.value = muted ? 0 : 0.28;
+        writeSave({ muted });
+    }
+
     playTone(freq, type, duration, slideTo = null) {
-        if (this.ctx.state === 'suspended') this.ctx.resume();
+        if (this.muted) return;
+        this.ensure();
+        if (!this.ctx) return;
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
-
         osc.type = type;
         osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
         if (slideTo) {
-            osc.frequency.exponentialRampToValueAtTime(slideTo, this.ctx.currentTime + duration);
+            osc.frequency.exponentialRampToValueAtTime(Math.max(slideTo, 1), this.ctx.currentTime + duration);
         }
-
-        gain.gain.setValueAtTime(1, this.ctx.currentTime);
+        gain.gain.setValueAtTime(0.9, this.ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
-
         osc.connect(gain);
         gain.connect(this.masterGain);
         osc.start();
         osc.stop(this.ctx.currentTime + duration);
     }
 
-    playFlip() {
-        // High-tech blip
-        this.playTone(800, 'sine', 0.1, 1200);
-    }
-
+    playFlip() { this.playTone(800, 'sine', 0.1, 1200); }
     playMatch() {
-        // Success chord
-        this.playTone(440, 'triangle', 0.3); // A4
-        setTimeout(() => this.playTone(554, 'triangle', 0.3), 100); // C#5
-        setTimeout(() => this.playTone(659, 'triangle', 0.4), 200); // E5
+        this.playTone(440, 'triangle', 0.3);
+        setTimeout(() => this.playTone(554, 'triangle', 0.3), 100);
+        setTimeout(() => this.playTone(659, 'triangle', 0.4), 200);
     }
-
-    playError() {
-        this.playTone(150, 'sawtooth', 0.2, 50);
-    }
-
-    playPower() {
-        // Power up sweep
-        this.playTone(200, 'square', 0.6, 800);
-    }
-
+    playMiss() { this.playTone(160, 'sawtooth', 0.18, 60); }
+    playPower() { this.playTone(200, 'square', 0.5, 800); }
     playWin() {
-        // Victory fanfare sequence
         [523, 659, 783, 1046].forEach((freq, i) => {
-            setTimeout(() => this.playTone(freq, 'square', 0.4), i * 150);
+            setTimeout(() => this.playTone(freq, 'square', 0.35), i * 140);
         });
     }
 }
 
 const AudioCtrl = new SoundEngine();
 
-// --- World ID Integration ---
-const WorldID = {
-    isVerified: false,
+const WorldBridge = {
+    installed: false,
+    verified: false,
 
-    init: function (callback) {
-        // Check if IDKit is loaded
-        if (window.IDKit) {
-            window.IDKit.init({
-                app_id: "app_staging_YOUR_APP_ID", // TODO: User to replace this
-                action: "play-lom",
-                onSuccess: (result) => {
-                    console.log("Creating proof...", result);
-                },
-                handleVerify: (verifyResult) => {
-                    console.log("Verification success!", verifyResult);
-                    this.isVerified = true;
-                    callback();
-                },
-                verification_level: "orb" // or "device"
-            });
-        } else {
-            console.warn("World ID SDK not active. Running in simulation mode.");
-            // For testing without SDK, just callback
-            // callback(); 
+    init() {
+        const MiniKit = window.MiniKit;
+        if (!MiniKit) return false;
+        try {
+            const result = MiniKit.install ? MiniKit.install() : { success: MiniKit.isInstalled?.() };
+            this.installed = Boolean(result?.success || MiniKit.isInstalled?.());
+        } catch {
+            this.installed = Boolean(MiniKit.isInstalled?.());
         }
+        return this.installed;
     },
 
-    open: function () {
-        if (window.IDKit) {
-            window.IDKit.open();
-        } else {
-            console.log("Simulating World ID check...");
-            this.isVerified = true;
-            return true;
+    async verify() {
+        const MiniKit = window.MiniKit;
+        if (!MiniKit || !this.installed) return { ok: false, reason: 'not-in-world-app' };
+        try {
+            if (MiniKit.commandsAsync?.verify) {
+                const { finalPayload } = await MiniKit.commandsAsync.verify({
+                    action: 'play-lom',
+                    verification_level: 'device',
+                });
+                this.verified = finalPayload?.status === 'success';
+                return { ok: this.verified, payload: finalPayload };
+            }
+            if (MiniKit.commands?.verify) {
+                MiniKit.commands.verify({ action: 'play-lom', verification_level: 'device' });
+                return { ok: true };
+            }
+        } catch (err) {
+            return { ok: false, reason: err?.message || 'verify-failed' };
         }
-    }
+        return { ok: false, reason: 'sdk-missing-verify' };
+    },
 };
-
-// --- Game Classes ---
 
 class Card {
     constructor(id, icon) {
@@ -156,22 +200,37 @@ class Game {
         this.isProcessing = false;
         this.timer = null;
         this.blockedPlayerIndex = -1;
-
+        this.turnToken = 0;
+        this.botTimers = [];
+        this.settings = {
+            name: loadSave().name || 'YOU',
+            bots: Number(loadSave().bots) || 3,
+            difficulty: loadSave().difficulty || 'normal',
+        };
         this.ui = {
             grid: document.getElementById('game-grid'),
             players: document.getElementById('players-panel'),
             status: document.getElementById('game-status'),
             timerFill: document.getElementById('timer-fill'),
+            timerBar: document.querySelector('.turn-timer-bar'),
             powerCards: document.getElementById('power-cards'),
             modal: document.getElementById('modal-overlay'),
             modalTitle: document.getElementById('modal-title'),
             modalBody: document.getElementById('modal-body'),
             modalBtn: document.getElementById('modal-btn'),
+            lobbyBtn: document.getElementById('lobby-btn'),
+            bestScore: document.getElementById('best-score'),
             startOverlay: document.getElementById('start-overlay'),
-            verifyBtn: document.getElementById('verify-btn')
+            lobbyForm: document.getElementById('lobby-form'),
+            playerName: document.getElementById('player-name'),
+            verifyBtn: document.getElementById('verify-btn'),
+            worldStatus: document.getElementById('world-status'),
+            muteBtn: document.getElementById('mute-btn'),
         };
-
         this.bindEvents();
+        this.hydrateLobby();
+        this.initWorld();
+        this.syncMuteButton();
     }
 
     bindEvents() {
@@ -179,55 +238,105 @@ class Game {
             this.ui.modal.classList.add('hidden');
             this.startNewGame();
         });
+        this.ui.lobbyBtn.addEventListener('click', () => {
+            this.teardown();
+            this.ui.modal.classList.add('hidden');
+            this.ui.startOverlay.classList.remove('hidden');
+        });
+        this.ui.lobbyForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+            this.collectSettings();
+            this.startGameFlow();
+        });
+        this.ui.verifyBtn.addEventListener('click', () => this.handleVerify());
+        this.ui.muteBtn.addEventListener('click', () => {
+            AudioCtrl.setMuted(!AudioCtrl.muted);
+            this.syncMuteButton();
+        });
+        this.ui.grid.addEventListener('keydown', (event) => this.handleGridKey(event));
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) this.stopTimer();
+        });
+    }
 
-        if (this.ui.verifyBtn) {
-            this.ui.verifyBtn.addEventListener('click', () => {
-                // If SDK present, open it. If not, auto-start.
-                if (WorldID.open()) {
-                    this.startGameFlow();
-                } else {
-                    // Actual SDK callback will trigger this via init handleVerify
-                    // This path is for the simulation fallback
-                }
-            });
-            // Hook actual WorldID callback
-            WorldID.init(() => this.startGameFlow());
+    hydrateLobby() {
+        this.ui.playerName.value = this.settings.name === 'YOU' ? '' : this.settings.name;
+        const bots = String(this.settings.bots);
+        const diff = this.settings.difficulty;
+        const botsInput = this.ui.lobbyForm.querySelector(`input[name="bots"][value="${bots}"]`);
+        const diffInput = this.ui.lobbyForm.querySelector(`input[name="diff"][value="${diff}"]`);
+        if (botsInput) botsInput.checked = true;
+        if (diffInput) diffInput.checked = true;
+        const best = loadSave().bestScore;
+        if (best) this.ui.worldStatus.textContent = `Best human score on this device: ${best}`;
+    }
+
+    initWorld() {
+        const ready = WorldBridge.init();
+        if (ready) {
+            this.ui.verifyBtn.hidden = false;
+            this.ui.worldStatus.textContent = 'World App detected. Optional: verify to mark this session as human.';
         } else {
-            // Direct start if no verify button (e.g. dev mode)
-            this.setupPlayers();
-            this.startNewGame();
+            this.ui.verifyBtn.hidden = true;
+            this.ui.worldStatus.textContent = 'Playable in any browser. World ID is optional inside World App.';
         }
     }
 
+    async handleVerify() {
+        this.ui.verifyBtn.disabled = true;
+        this.ui.worldStatus.textContent = 'Opening World ID…';
+        const result = await WorldBridge.verify();
+        this.ui.verifyBtn.disabled = false;
+        if (result.ok) {
+            this.ui.worldStatus.textContent = 'Verified human. Enter the arena when ready.';
+        } else if (result.reason === 'not-in-world-app') {
+            this.ui.worldStatus.textContent = 'Open this URL inside World App to verify. You can still play here.';
+        } else {
+            this.ui.worldStatus.textContent = 'Verification skipped or unavailable. You can still play.';
+        }
+    }
+
+    collectSettings() {
+        const name = (this.ui.playerName.value || 'YOU').trim().slice(0, 16) || 'YOU';
+        const bots = Number(this.ui.lobbyForm.querySelector('input[name="bots"]:checked')?.value || 3);
+        const difficulty = this.ui.lobbyForm.querySelector('input[name="diff"]:checked')?.value || 'normal';
+        this.settings = { name, bots, difficulty };
+        writeSave(this.settings);
+    }
+
     startGameFlow() {
-        if (this.ui.startOverlay) this.ui.startOverlay.classList.add('hidden');
+        AudioCtrl.resume();
+        this.ui.startOverlay.classList.add('hidden');
         this.setupPlayers();
         this.startNewGame();
-        AudioCtrl.playPower(); // Intro sound
+        AudioCtrl.playPower();
     }
 
     setupPlayers() {
-        this.players = [
-            new Player(0, 'Human', false),
-            new Player(1, 'Bot Alpha', true),
-            new Player(2, 'Bot Beta', true),
-            new Player(3, 'Bot Gamma', true),
-            new Player(4, 'Bot Delta', true),
-            new Player(5, 'Bot Omega', true),
-        ];
+        const bots = Math.min(5, Math.max(1, this.settings.bots));
+        this.players = [new Player(0, this.settings.name, false)];
+        shuffleInPlace([...BOT_NAMES]).slice(0, bots).forEach((name, i) => {
+            this.players.push(new Player(i + 1, name, true));
+        });
+    }
+
+    teardown() {
+        this.stopTimer();
+        this.clearBotTimers();
+        this.turnToken += 1;
+        this.isProcessing = false;
+        this.flippedCards = [];
     }
 
     startNewGame() {
+        this.teardown();
         this.activePlayerIndex = 0;
         this.blockedPlayerIndex = -1;
-        this.flippedCards = [];
-        this.isProcessing = false;
-        this.players.forEach(p => {
+        this.players.forEach((p) => {
             p.score = 0;
             p.powers = { block: 1, scanner: 1, shuffle: 1 };
             p.memory.clear();
         });
-
         this.generateCards();
         this.renderGrid();
         this.renderPlayers();
@@ -237,25 +346,35 @@ class Game {
     }
 
     generateCards() {
-        let deck = [];
+        const deck = [];
         for (let i = 0; i < CONFIG.PAIRS; i++) {
             const icon = ICONS[i % ICONS.length];
             deck.push(new Card(i * 2, icon));
             deck.push(new Card(i * 2 + 1, icon));
         }
-        deck.sort(() => Math.random() - 0.5);
-        this.cards = deck;
+        this.cards = shuffleInPlace(deck);
+    }
+
+    getCurrentPlayer() {
+        return this.players[this.activePlayerIndex];
     }
 
     startTurn() {
         this.stopTimer();
+        this.clearBotTimers();
         this.flippedCards = [];
         this.isProcessing = false;
+        const token = ++this.turnToken;
 
         if (this.activePlayerIndex === this.blockedPlayerIndex) {
-            this.updateStatus(`${this.getCurrentPlayer().name} is Frozen!`);
+            const frozen = this.getCurrentPlayer();
+            this.updateStatus(`${frozen.name} is frozen`);
             this.blockedPlayerIndex = -1;
-            setTimeout(() => this.nextTurn(), 2500);
+            this.renderPlayers();
+            this.schedule(() => {
+                if (this.turnToken !== token) return;
+                this.nextTurn();
+            }, 1600);
             return;
         }
 
@@ -263,11 +382,10 @@ class Game {
         this.renderPowers();
         this.updateStatus();
 
-        const player = this.getCurrentPlayer();
-        this.startTimer();
-
-        if (player.isBot) {
-            this.processBotTurn();
+        if (this.getCurrentPlayer().isBot) {
+            this.processBotTurn(token);
+        } else {
+            this.startTimer(token);
         }
     }
 
@@ -277,36 +395,49 @@ class Game {
     }
 
     nextTurn() {
-        this.activePlayerIndex = (this.activePlayerIndex + 1) % this.players.length;
-        if (this.cards.every(c => c.isMatched)) {
+        if (this.cards.every((c) => c.isMatched)) {
             this.handleGameOver();
-        } else {
-            this.startTurn();
+            return;
         }
+        this.activePlayerIndex = (this.activePlayerIndex + 1) % this.players.length;
+        this.startTurn();
     }
 
     handleCardClick(index) {
         if (this.isProcessing) return;
-        const player = this.getCurrentPlayer();
-        if (player.isBot) return;
-
-        // Resume Audio Context on first interaction
-        if (AudioCtrl.ctx.state === 'suspended') AudioCtrl.ctx.resume();
-
+        if (this.getCurrentPlayer().isBot) return;
+        AudioCtrl.resume();
         this.flipCard(index);
+    }
+
+    handleGridKey(event) {
+        const current = document.activeElement;
+        if (!current || !current.id.startsWith('card-')) return;
+        const index = Number(current.id.slice(5));
+        const col = index % CONFIG.GRID_SIZE;
+        const row = Math.floor(index / CONFIG.GRID_SIZE);
+        let next = index;
+        if (event.key === 'ArrowRight') next = row * CONFIG.GRID_SIZE + ((col + 1) % CONFIG.GRID_SIZE);
+        else if (event.key === 'ArrowLeft') next = row * CONFIG.GRID_SIZE + ((col + CONFIG.GRID_SIZE - 1) % CONFIG.GRID_SIZE);
+        else if (event.key === 'ArrowDown') next = ((row + 1) % CONFIG.GRID_SIZE) * CONFIG.GRID_SIZE + col;
+        else if (event.key === 'ArrowUp') next = ((row + CONFIG.GRID_SIZE - 1) % CONFIG.GRID_SIZE) * CONFIG.GRID_SIZE + col;
+        else if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            this.handleCardClick(index);
+            return;
+        } else return;
+        event.preventDefault();
+        document.getElementById(`card-${next}`)?.focus();
     }
 
     flipCard(index) {
         const card = this.cards[index];
-        if (card.isFlipped || card.isMatched) return;
+        if (!card || card.isFlipped || card.isMatched) return false;
+        if (this.flippedCards.length >= 2) return false;
 
         AudioCtrl.playFlip();
-
         card.isFlipped = true;
-        const cardEl = document.getElementById(`card-${index}`);
-        cardEl.classList.add('flipped');
-        cardEl.setAttribute('aria-pressed', 'true');
-
+        this.paintCard(index);
         this.flippedCards.push(index);
         this.notifyBotsOfCard(index, card.icon);
 
@@ -315,53 +446,44 @@ class Game {
             this.stopTimer();
             this.checkMatch();
         }
+        return true;
     }
 
     checkMatch() {
         const [idx1, idx2] = this.flippedCards;
         const card1 = this.cards[idx1];
         const card2 = this.cards[idx2];
+        const token = this.turnToken;
 
         if (card1.icon === card2.icon) {
             AudioCtrl.playMatch();
-            setTimeout(() => {
+            this.schedule(() => {
+                if (this.turnToken !== token) return;
                 card1.isMatched = true;
                 card2.isMatched = true;
-                document.getElementById(`card-${idx1}`).classList.add('matched');
-                document.getElementById(`card-${idx2}`).classList.add('matched');
-
+                this.paintCard(idx1);
+                this.paintCard(idx2);
                 const player = this.getCurrentPlayer();
                 player.score += CONFIG.MATCH_POINTS;
-
-                this.updateStatus(`${player.name} Scored!`);
+                this.updateStatus(`${player.name} scored`);
                 this.renderPlayers();
-
-                if (this.cards.every(c => c.isMatched)) {
+                if (this.cards.every((c) => c.isMatched)) {
                     this.handleGameOver();
                     return;
                 }
-
                 this.flippedCards = [];
                 this.isProcessing = false;
-
-                if (player.isBot) {
-                    setTimeout(() => this.processBotTurn(), 1000);
-                } else {
-                    this.startTimer();
-                }
-            }, 600);
+                if (player.isBot) this.processBotTurn(token);
+                else this.startTimer(token);
+            }, 520);
         } else {
-            // AudioCtrl.playError(); // Optional: Negative sound
-            setTimeout(() => {
+            AudioCtrl.playMiss();
+            this.schedule(() => {
+                if (this.turnToken !== token) return;
                 card1.isFlipped = false;
                 card2.isFlipped = false;
-                const el1 = document.getElementById(`card-${idx1}`);
-                const el2 = document.getElementById(`card-${idx2}`);
-                el1.classList.remove('flipped');
-                el1.setAttribute('aria-pressed', 'false');
-                el2.classList.remove('flipped');
-                el2.setAttribute('aria-pressed', 'false');
-
+                this.paintCard(idx1);
+                this.paintCard(idx2);
                 this.endTurn();
             }, CONFIG.REVEAL_DELAY_MS);
         }
@@ -369,155 +491,213 @@ class Game {
 
     handleGameOver() {
         this.stopTimer();
+        this.clearBotTimers();
         AudioCtrl.playWin();
-        const winner = this.players.reduce((prev, current) => (prev.score > current.score) ? prev : current);
-        this.ui.modalTitle.innerText = "GAME OVER";
-        this.ui.modalBody.innerHTML = `<span style="color:var(--accent-success);font-size:1.5rem">${winner.name}</span> wins<br>with ${winner.score} points!`;
+        const ranked = [...this.players].sort((a, b) => b.score - a.score);
+        const winner = ranked[0];
+        const human = this.players.find((p) => !p.isBot);
+        const save = loadSave();
+        const best = Math.max(Number(save.bestScore) || 0, human?.score || 0);
+        writeSave({ bestScore: best, lastWinner: winner.name });
+
+        this.ui.modalTitle.textContent = winner.isBot ? 'Sector lost' : 'Sector cleared';
+        this.ui.modalBody.innerHTML = `${ranked.map((p, i) =>
+            `<div class="standings ${p === winner ? 'winner' : ''}">${i + 1}. ${escapeHtml(p.name)} — ${p.score}</div>`
+        ).join('')}`;
+        this.ui.bestScore.textContent = human
+            ? `Your score ${human.score} · best ${best}${WorldBridge.verified ? ' · verified human' : ''}`
+            : '';
         this.ui.modal.classList.remove('hidden');
+        this.ui.modalBtn.focus();
     }
 
-    startTimer() {
+    startTimer(token) {
         const duration = CONFIG.TURN_DURATION_MS;
         this.ui.timerFill.style.transition = 'none';
         this.ui.timerFill.style.width = '100%';
-        this.ui.timerFill.offsetHeight;
+        void this.ui.timerFill.offsetHeight;
         this.ui.timerFill.style.transition = `width ${duration}ms linear`;
         this.ui.timerFill.style.width = '0%';
+        if (this.ui.timerBar) this.ui.timerBar.setAttribute('aria-valuenow', '7');
 
         this.timer = setTimeout(() => {
-            if (this.flippedCards.length > 0) {
-                const idx = this.flippedCards[0];
+            if (this.turnToken !== token) return;
+            this.flippedCards.forEach((idx) => {
                 this.cards[idx].isFlipped = false;
-                document.getElementById(`card-${idx}`).classList.remove('flipped');
-            }
-            this.updateStatus("Time's Up!");
-            setTimeout(() => this.endTurn(), 500);
+                this.paintCard(idx);
+            });
+            this.flippedCards = [];
+            this.updateStatus("Time's up");
+            this.schedule(() => {
+                if (this.turnToken !== token) return;
+                this.endTurn();
+            }, 350);
         }, duration);
     }
 
     stopTimer() {
         clearTimeout(this.timer);
+        this.timer = null;
         this.ui.timerFill.style.transition = 'none';
+    }
+
+    schedule(fn, ms) {
+        const id = setTimeout(fn, ms);
+        this.botTimers.push(id);
+        return id;
+    }
+
+    clearBotTimers() {
+        this.botTimers.forEach((id) => clearTimeout(id));
+        this.botTimers = [];
     }
 
     activatePower(powerType) {
         const player = this.getCurrentPlayer();
         if (player.isBot || this.flippedCards.length > 0 || this.isProcessing) return;
-        if (player.powers[powerType] <= 0) return;
-
-        AudioCtrl.playPower();
-        player.powers[powerType]--;
-        this.renderPowers();
-
-        switch (powerType) {
-            case 'block': this.useBlockPower(); break;
-            case 'scanner': this.useScannerPower(); break;
-            case 'shuffle': this.useShufflePower(); break;
-        }
+        this.consumePower(player, powerType);
     }
 
-    useBlockPower() {
-        const nextIdx = (this.activePlayerIndex + 1) % this.players.length;
-        this.blockedPlayerIndex = nextIdx;
-        this.updateStatus(`${this.players[nextIdx].name} is Frozen!`);
+    consumePower(player, powerType) {
+        if (player.powers[powerType] <= 0) return false;
+        AudioCtrl.playPower();
+        player.powers[powerType] -= 1;
+        this.renderPowers();
+        if (powerType === 'block') this.useBlockPower(player);
+        if (powerType === 'scanner') this.useScannerPower();
+        if (powerType === 'shuffle') this.useShufflePower();
+        return true;
+    }
+
+    useBlockPower(player) {
+        let next = (this.activePlayerIndex + 1) % this.players.length;
+        if (this.players.length > 2 && this.players[next] === player) {
+            next = (next + 1) % this.players.length;
+        }
+        this.blockedPlayerIndex = next;
+        this.updateStatus(`${this.players[next].name} will be frozen`);
     }
 
     useScannerPower() {
-        const hiddenIndices = this.cards
+        const hidden = this.cards
             .map((c, i) => ({ c, i }))
-            .filter(item => !item.c.isMatched && !item.c.isFlipped)
-            .map(item => item.i);
+            .filter((item) => !item.c.isMatched && !item.c.isFlipped);
 
-        // Cheat slightly to find 2 pairs
-        let groups = {};
-        hiddenIndices.forEach(idx => {
-            const icon = this.cards[idx].icon;
-            if (!groups[icon]) groups[icon] = [];
-            groups[icon].push(idx);
+        const groups = {};
+        hidden.forEach(({ c, i }) => {
+            if (!groups[c.icon]) groups[c.icon] = [];
+            groups[c.icon].push(i);
         });
+        const pairs = Object.values(groups).filter((g) => g.length >= 2).map((g) => g.slice(0, 2));
+        const reveal = shuffleInPlace(pairs).slice(0, 2).flat();
 
-        const pairs = Object.values(groups).filter(g => g.length === 2);
-        const pairsToReveal = pairs.sort(() => Math.random() - 0.5).slice(0, 2).flat();
-
-        if (pairsToReveal.length === 0) {
-            this.updateStatus("No pairs to scan!");
+        if (!reveal.length) {
+            this.updateStatus('Nothing left to scan');
             return;
         }
 
-        pairsToReveal.forEach(idx => document.getElementById(`card-${idx}`).classList.add('flipped'));
-        this.updateStatus("Scanning Sector...");
-
-        setTimeout(() => {
-            pairsToReveal.forEach(idx => {
-                const el = document.getElementById(`card-${idx}`);
-                if (!this.cards[idx].isFlipped && !this.cards[idx].isMatched) el.classList.remove('flipped');
-            });
-            pairsToReveal.forEach(idx => this.notifyBotsOfCard(idx, this.cards[idx].icon));
-        }, 3000);
+        reveal.forEach((idx) => {
+            document.getElementById(`card-${idx}`)?.classList.add('preview');
+            this.notifyBotsOfCard(idx, this.cards[idx].icon);
+        });
+        this.updateStatus('Scanning sector…');
+        this.schedule(() => {
+            reveal.forEach((idx) => document.getElementById(`card-${idx}`)?.classList.remove('preview'));
+        }, CONFIG.SCAN_MS);
     }
 
     useShufflePower() {
-        this.updateStatus("Hyper-Shuffling...");
-        const availableIndices = [];
-        const availableIcons = [];
+        this.updateStatus('Hyper-shuffling…');
+        const indices = [];
+        const icons = [];
         this.cards.forEach((c, i) => {
             if (!c.isMatched && !c.isFlipped) {
-                availableIndices.push(i);
-                availableIcons.push(c.icon);
+                indices.push(i);
+                icons.push(c.icon);
             }
         });
-
-        availableIcons.sort(() => Math.random() - 0.5);
-        availableIndices.forEach((idx, k) => {
-            this.cards[idx].icon = availableIcons[k];
-            this.players.forEach(p => { if (p.isBot) p.memory.delete(idx); });
+        shuffleInPlace(icons);
+        indices.forEach((idx, k) => {
+            this.cards[idx].icon = icons[k];
         });
-
-        setTimeout(() => this.renderGrid(), 600);
+        this.players.forEach((p) => {
+            if (p.isBot) p.memory.clear();
+        });
+        this.schedule(() => this.renderGrid(), 280);
     }
 
-    processBotTurn() {
+    processBotTurn(token) {
         const bot = this.getCurrentPlayer();
-        setTimeout(() => {
-            // Simple AI Logic
-            const match = this.findMatchInMemory(bot);
-            if (match) {
-                this.flipCard(match[0]);
-                setTimeout(() => this.flipCard(match[1]), 600);
-            } else {
-                const possiblePicks = this.cards.map((c, i) => i)
-                    .filter(i => !this.cards[i].isMatched && !this.cards[i].isFlipped && !bot.memory.has(i));
-                const anyPick = this.cards.map((c, i) => i)
-                    .filter(i => !this.cards[i].isMatched && !this.cards[i].isFlipped);
-                const firstPick = (possiblePicks.length > 0) ? possiblePicks[Math.floor(Math.random() * possiblePicks.length)] : anyPick[Math.floor(Math.random() * anyPick.length)];
+        const profile = DIFFICULTY[this.settings.difficulty] || DIFFICULTY.normal;
 
-                if (firstPick === undefined) return;
-                this.flipCard(firstPick);
+        this.schedule(() => {
+            if (this.turnToken !== token || this.getCurrentPlayer() !== bot) return;
+            if (this.maybeBotPower(bot, profile) && this.turnToken !== token) return;
 
-                const firstIcon = this.cards[firstPick].icon;
-                const memoryMatch = this.findCardWithIconInMemory(bot, firstIcon, firstPick);
-
-                setTimeout(() => {
-                    if (memoryMatch !== null) this.flipCard(memoryMatch);
-                    else {
-                        const remaining = anyPick.filter(i => i !== firstPick);
-                        if (remaining.length > 0) this.flipCard(remaining[Math.floor(Math.random() * remaining.length)]);
-                    }
-                }, 1000);
+            const known = this.findMatchInMemory(bot);
+            if (known) {
+                this.flipCard(known[0]);
+                this.schedule(() => {
+                    if (this.turnToken !== token) return;
+                    this.flipCard(known[1]);
+                }, 480);
+                return;
             }
-        }, CONFIG.BOT_SPEED_MS);
+
+            const unknown = this.openIndices().filter((i) => !bot.memory.has(i));
+            const pool = unknown.length ? unknown : this.openIndices();
+            if (!pool.length) return;
+            const first = pool[Math.floor(Math.random() * pool.length)];
+            this.flipCard(first);
+            const remembered = this.findCardWithIconInMemory(bot, this.cards[first].icon, first);
+
+            this.schedule(() => {
+                if (this.turnToken !== token) return;
+                if (remembered !== null) {
+                    this.flipCard(remembered);
+                    return;
+                }
+                const rest = this.openIndices().filter((i) => i !== first);
+                if (rest.length) this.flipCard(rest[Math.floor(Math.random() * rest.length)]);
+            }, 700);
+        }, profile.botMs);
+    }
+
+    maybeBotPower(bot, profile) {
+        if (Math.random() > profile.usePower) return false;
+        if (bot.powers.scanner && this.openIndices().length >= 8) {
+            return this.consumePower(bot, 'scanner');
+        }
+        if (bot.powers.shuffle && this.humanHasStrongMemory()) {
+            return this.consumePower(bot, 'shuffle');
+        }
+        if (bot.powers.block) {
+            return this.consumePower(bot, 'block');
+        }
+        return false;
+    }
+
+    humanHasStrongMemory() {
+        const human = this.players.find((p) => !p.isBot);
+        return Boolean(human && human.score >= 30);
+    }
+
+    openIndices() {
+        return this.cards.map((c, i) => i).filter((i) => !this.cards[i].isMatched && !this.cards[i].isFlipped);
     }
 
     notifyBotsOfCard(index, icon) {
-        this.players.forEach(p => {
-            if (p.isBot && Math.random() < 0.85) p.memory.set(index, icon);
+        const rate = (DIFFICULTY[this.settings.difficulty] || DIFFICULTY.normal).memory;
+        this.players.forEach((p) => {
+            if (p.isBot && Math.random() < rate) p.memory.set(index, icon);
         });
     }
 
     findMatchInMemory(bot) {
         const seen = {};
         for (const [idx, icon] of bot.memory.entries()) {
-            if (this.cards[idx].isMatched) continue;
+            if (this.cards[idx].isMatched || this.cards[idx].isFlipped) continue;
+            if (this.cards[idx].icon !== icon) continue;
             if (!seen[icon]) seen[icon] = [];
             seen[icon].push(idx);
             if (seen[icon].length === 2) return seen[icon];
@@ -527,78 +707,112 @@ class Game {
 
     findCardWithIconInMemory(bot, icon, excludeIndex) {
         for (const [idx, memIcon] of bot.memory.entries()) {
-            if (memIcon === icon && idx !== excludeIndex && !this.cards[idx].isMatched) return idx;
+            if (memIcon === icon && idx !== excludeIndex && !this.cards[idx].isMatched && !this.cards[idx].isFlipped) {
+                return idx;
+            }
         }
         return null;
     }
 
-    getCurrentPlayer() { return this.players[this.activePlayerIndex]; }
-
     updateStatus(msg) {
-        if (msg) {
-            this.ui.status.innerText = msg;
-            this.ui.status.classList.add('glow-text');
-            setTimeout(() => this.ui.status.classList.remove('glow-text'), 500);
-        } else {
-            this.ui.status.innerText = `${this.getCurrentPlayer().name}'s Turn`;
-        }
+        this.ui.status.textContent = msg || `${this.getCurrentPlayer().name}'s turn`;
+    }
+
+    paintCard(index) {
+        const card = this.cards[index];
+        const el = document.getElementById(`card-${index}`);
+        if (!el || !card) return;
+        el.classList.toggle('flipped', card.isFlipped || card.isMatched);
+        el.classList.toggle('matched', card.isMatched);
+        el.setAttribute('aria-pressed', String(card.isFlipped || card.isMatched));
+        const face = el.querySelector('.card-front');
+        if (face) face.textContent = card.icon;
+        if (card.isMatched) el.setAttribute('aria-hidden', 'true');
+        else el.removeAttribute('aria-hidden');
     }
 
     renderGrid() {
-        this.ui.grid.innerHTML = '';
+        const frag = document.createDocumentFragment();
         this.cards.forEach((card, index) => {
-            const cardEl = document.createElement('div');
-            cardEl.className = 'card';
-            cardEl.id = `card-${index}`;
-            cardEl.setAttribute('role', 'button');
+            const el = document.createElement('button');
+            el.type = 'button';
+            el.className = 'card';
+            el.id = `card-${index}`;
+            el.setAttribute('role', 'gridcell');
+            el.setAttribute('aria-label', `Card ${index + 1}`);
+            el.setAttribute('aria-pressed', String(card.isFlipped || card.isMatched));
             if (card.isMatched) {
-                cardEl.classList.add('matched');
-                cardEl.setAttribute('aria-hidden', 'true');
+                el.classList.add('matched', 'flipped');
+                el.setAttribute('aria-hidden', 'true');
+            } else if (card.isFlipped) {
+                el.classList.add('flipped');
             }
-            if (card.isFlipped) cardEl.classList.add('flipped');
-            cardEl.innerHTML = `<div class="card-inner"><div class="card-front">${card.icon}</div><div class="card-back"></div></div>`;
-            cardEl.onclick = () => this.handleCardClick(index);
-            this.ui.grid.appendChild(cardEl);
+            const row = Math.floor(index / CONFIG.GRID_SIZE) + 1;
+            const col = (index % CONFIG.GRID_SIZE) + 1;
+            el.setAttribute('aria-rowindex', String(row));
+            el.setAttribute('aria-colindex', String(col));
+            el.innerHTML = `<span class="card-inner"><span class="card-front">${card.icon}</span><span class="card-back" aria-hidden="true"></span></span>`;
+            el.addEventListener('click', () => this.handleCardClick(index));
+            frag.appendChild(el);
         });
+        this.ui.grid.replaceChildren(frag);
     }
 
     renderPlayers() {
-        this.ui.players.innerHTML = '';
+        const frag = document.createDocumentFragment();
         this.players.forEach((p, idx) => {
             const el = document.createElement('div');
             el.className = `player-card ${idx === this.activePlayerIndex ? 'active' : ''} ${p.isBot ? 'is-bot' : ''}`;
-            el.innerHTML = `<div class="player-avatar">G${idx + 1}</div><div class="player-score">${p.score}</div>`;
-            this.ui.players.appendChild(el);
+            el.setAttribute('aria-current', idx === this.activePlayerIndex ? 'true' : 'false');
+            el.innerHTML = `<div class="player-avatar">${escapeHtml(p.name.slice(0, 2).toUpperCase())}</div>
+                <div class="player-name">${escapeHtml(p.name)}</div>
+                <div class="player-score">${p.score}</div>`;
+            frag.appendChild(el);
         });
-        const activeEl = this.ui.players.children[this.activePlayerIndex];
-        if (activeEl) activeEl.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        this.ui.players.replaceChildren(frag);
+        this.ui.players.children[this.activePlayerIndex]?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest',
+            inline: 'center',
+        });
     }
 
     renderPowers() {
         const player = this.getCurrentPlayer();
-        this.ui.powerCards.innerHTML = '';
         if (player.isBot) {
-            this.ui.powerCards.innerHTML = '<div style="color:#777; font-size:0.8rem; margin-top:20px;">OPPONENT TURN</div>';
+            this.ui.powerCards.innerHTML = '<div class="opp-turn">Opponent turn</div>';
             return;
         }
-        Object.values(POWERS).forEach(power => {
+        const frag = document.createDocumentFragment();
+        Object.values(POWERS).forEach((power) => {
             const count = player.powers[power.id];
-            const el = document.createElement('div');
+            const el = document.createElement('button');
+            el.type = 'button';
             el.className = `power-card ${count === 0 ? 'disabled' : ''}`;
-            el.innerHTML = `<div class="power-count">${count}</div><div class="icon">${power.icon}</div><div>${power.name}</div>`;
-            el.onclick = () => this.activatePower(power.id);
-            this.ui.powerCards.appendChild(el);
+            el.disabled = count === 0;
+            el.title = power.desc;
+            el.setAttribute('aria-label', `${power.name}. ${power.desc}. ${count} left`);
+            el.innerHTML = `<span class="power-count">${count}</span><span class="icon">${power.icon}</span><span>${power.name}</span>`;
+            el.addEventListener('click', () => this.activatePower(power.id));
+            frag.appendChild(el);
         });
+        this.ui.powerCards.replaceChildren(frag);
+    }
+
+    syncMuteButton() {
+        this.ui.muteBtn.textContent = AudioCtrl.muted ? '🔇' : '🔊';
+        this.ui.muteBtn.setAttribute('aria-pressed', String(AudioCtrl.muted));
+        this.ui.muteBtn.setAttribute('aria-label', AudioCtrl.muted ? 'Unmute sound' : 'Mute sound');
     }
 }
 
-// --- Initialization ---
-window.onload = () => {
-    // Check if we start immediately or waiting for UI
-    const startOverlay = document.getElementById('start-overlay');
-    if (!startOverlay) {
-        new Game();
-    } else {
-        new Game(); // Game constructor now handles binding verify button
-    }
-};
+function registerWorker() {
+    if (!('serviceWorker' in navigator)) return;
+    if (!window.location.protocol.startsWith('http')) return;
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    window.lomGame = new Game();
+    registerWorker();
+});
