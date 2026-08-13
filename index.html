@@ -3,80 +3,126 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>League of Memory - LOM</title>
-    <meta name="description" content="A futuristic, 6-player turn-based strategy memory game for World App.">
-    <!-- World ID SDK -->
-    <script src="https://unpkg.com/@worldcoin/idkit@1.3.0/build/idkit-js.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>League of Memory — LOM</title>
+    <meta name="description" content="A futuristic 6-player turn-based memory arena. Match pairs, freeze rivals, scan the board. Play now or open it in World App.">
+    <meta name="theme-color" content="#050510">
+    <meta name="color-scheme" content="dark">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="LOM">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="assets/icon.svg">
+    <link rel="canonical" href="https://lom-lyart.vercel.app/">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="League of Memory">
+    <meta property="og:description" content="6-player memory arena with power cards. Match pairs, freeze rivals, scan the sector.">
+    <meta property="og:url" content="https://lom-lyart.vercel.app/">
+    <meta property="og:image" content="https://lom-lyart.vercel.app/assets/og.svg">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <link
-        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@300;500;700&display=swap"
-        rel="stylesheet">
 </head>
 
 <body>
+    <a class="skip-link" href="#game-grid">Skip to board</a>
 
-    <!-- Start/Verify Overlay -->
-    <div id="start-overlay" class="modal-overlay" style="opacity:1; pointer-events:auto; z-index:999;">
-        <div class="modal-content">
-            <h1 class="glow-text" style="font-size:3rem; margin-bottom:10px;">LOM</h1>
-            <p>League of Memory</p>
-            <div style="margin: 20px 0; font-size: 0.9rem; color: #888;">
-                Proof of Personhood Required
-            </div>
-            <button id="verify-btn" class="neon-btn">Verify with World ID</button>
+    <div id="start-overlay" class="modal-overlay lobby" style="opacity:1; pointer-events:auto; z-index:999;">
+        <div class="modal-content lobby-card">
+            <p class="eyebrow">World Mini App · Arena</p>
+            <h1 class="glow-text title-xl">LOM</h1>
+            <p class="subtitle">League of Memory</p>
+            <p class="lede">Match pairs in 7 seconds. Freeze a rival. Scan the sector. Shuffle the unknown.</p>
+
+            <form id="lobby-form" class="lobby-form" autocomplete="off">
+                <label class="field">
+                    <span>Callsign</span>
+                    <input id="player-name" name="callsign" type="text" maxlength="16" placeholder="YOU" aria-describedby="name-hint">
+                    <small id="name-hint">Saved on this device. Change it anytime.</small>
+                </label>
+
+                <fieldset class="field">
+                    <legend>Opponents</legend>
+                    <div class="chip-row" role="radiogroup" aria-label="Number of AI opponents">
+                        <label class="chip"><input type="radio" name="bots" value="1"> 1 bot</label>
+                        <label class="chip"><input type="radio" name="bots" value="3" checked> 3 bots</label>
+                        <label class="chip"><input type="radio" name="bots" value="5"> 5 bots</label>
+                    </div>
+                </fieldset>
+
+                <fieldset class="field">
+                    <legend>Difficulty</legend>
+                    <div class="chip-row" role="radiogroup" aria-label="Bot difficulty">
+                        <label class="chip"><input type="radio" name="diff" value="easy"> Easy</label>
+                        <label class="chip"><input type="radio" name="diff" value="normal" checked> Normal</label>
+                        <label class="chip"><input type="radio" name="diff" value="hard"> Hard</label>
+                    </div>
+                </fieldset>
+
+                <div class="cta-row">
+                    <button type="submit" id="play-btn" class="neon-btn">Enter Arena</button>
+                    <button type="button" id="verify-btn" class="ghost-btn" hidden>Verify World ID</button>
+                </div>
+                <p id="world-status" class="world-status" role="status"></p>
+            </form>
+
+            <details class="rules">
+                <summary>How to play</summary>
+                <ul>
+                    <li>Flip two cards. A match is +10 and you keep the turn.</li>
+                    <li>Miss, or let the 7s timer expire, and the next player goes.</li>
+                    <li><strong>Block</strong> freezes the next opponent.</li>
+                    <li><strong>Scanner</strong> flashes two hidden pairs for 3 seconds.</li>
+                    <li><strong>Shuffle</strong> remixes unmatched cards and wipes bot memory.</li>
+                </ul>
+            </details>
         </div>
     </div>
 
     <div class="app-container">
-        <!-- Header -->
         <header class="game-header" role="banner">
-            <h1 class="glow-text">LOM</h1>
-            <div class="game-status" id="game-status" aria-live="polite">Waiting to start...</div>
+            <div class="brand">
+                <h1 class="glow-text">LOM</h1>
+                <button type="button" id="mute-btn" class="icon-btn" aria-pressed="false" aria-label="Mute sound">🔊</button>
+            </div>
+            <div class="game-status" id="game-status" aria-live="polite">Waiting to start…</div>
         </header>
 
-        <!-- Main Game Area -->
         <main class="arena-container">
+            <aside class="players-panel" id="players-panel" aria-label="Players and scores"></aside>
 
-            <!-- Players Sidebar -->
-            <aside class="players-panel" id="players-panel" aria-label="Player Scores and Status">
-                <!-- Player slots generated by JS -->
-            </aside>
-
-            <!-- 6x6 Grid -->
-            <section class="game-grid-wrapper" aria-label="Game Board">
-                <div class="game-grid" id="game-grid" role="grid">
-                    <!-- Cards generated by JS -->
-                </div>
-
-                <!-- Turn Timer Overlay -->
-                <div class="turn-timer-bar" role="progressbar" aria-label="Turn Timer">
+            <section class="game-grid-wrapper" aria-label="Game board">
+                <div class="game-grid" id="game-grid" role="grid" aria-rowcount="6" aria-colcount="6"></div>
+                <div class="turn-timer-bar" role="progressbar" aria-label="Turn timer" aria-valuemin="0" aria-valuemax="7" aria-valuenow="7">
                     <div class="timer-fill" id="timer-fill"></div>
                 </div>
             </section>
-
         </main>
 
-        <!-- Power Deck -->
         <footer class="power-deck-container" role="contentinfo">
-            <div class="deck-label">POWER DECK</div>
-            <div class="power-cards" id="power-cards" role="toolbar" aria-label="Power Cards">
-                <!-- Power cards generated by JS -->
-            </div>
+            <div class="deck-label">Power Deck</div>
+            <div class="power-cards" id="power-cards" role="toolbar" aria-label="Power cards"></div>
         </footer>
 
-        <!-- Game Over Modal -->
-        <div id="modal-overlay" class="modal-overlay hidden" aria-modal="true" role="dialog"
-            aria-labelledby="modal-title">
+        <div id="modal-overlay" class="modal-overlay hidden" aria-modal="true" role="dialog" aria-labelledby="modal-title">
             <div class="modal-content">
                 <h2 id="modal-title">Game Over</h2>
-                <p id="modal-body">Winner: ...</p>
-                <button id="modal-btn" class="neon-btn">NEW GAME</button>
+                <p id="modal-body">Winner: …</p>
+                <p id="best-score" class="best-score"></p>
+                <div class="cta-row">
+                    <button id="modal-btn" class="neon-btn" type="button">Rematch</button>
+                    <button id="lobby-btn" class="ghost-btn" type="button">Lobby</button>
+                </div>
             </div>
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@worldcoin/minikit-js@1.9.7/dist/minikit.min.js" defer></script>
+    <script src="script.js" defer></script>
 </body>
 
 </html>

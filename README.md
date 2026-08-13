@@ -1,32 +1,38 @@
 # League of Memory (LOM)
 
-A futuristic, mobile-first 6-player turn-based memory game.
+A futuristic, mobile-first memory arena: you vs 1–5 AI opponents, 7-second turns, and three power cards.
 
-## Features
-- **6 Player Support**: Play with up to 6 players (AI fills empty slots).
-- **Power Cards**: Strategy elements including Block, Scanner, and Shuffle.
-- **Anti-Gravity Design**: Minimalist, dark, neon aesthetic.
-- **Responsive**: Optimized for mobile devices.
+Live: https://lom-lyart.vercel.app/
 
-## Setup
-1. Clone the repository.
-2. Open `index.html` in a web browser.
-3. Enjoy!
+## Play
 
-## World App Integration (Mini App)
-To deploy as a World App Mini App:
-1. Ensure the app is hosted on a secure (HTTPS) URL.
-2. Register the app in the World App Developer Portal.
-3. Integrate the World ID SDK in `script.js` (see `initWorldApp` placeholder).
-4. Verify the manifest.json requirements.
+1. Open the live URL or `index.html`.
+2. Pick a callsign, opponent count, and difficulty.
+3. Match pairs. A hit scores 10 and keeps your turn. A miss or timeout rotates play.
 
-## Game Rules
-- **Turn**: You have 7 seconds to make a move.
-- **Match**: Flipping a matching pair grants 10 points and an extra turn.
-- **Powers**:
-    - **Block**: Skip the next player's turn.
-    - **Scanner**: Reveal 2 random pairs for 3 seconds.
-    - **Shuffle**: Shuffle all hidden cards.
+Powers:
+- **Block** — freeze the next opponent
+- **Scanner** — flash two hidden pairs for 3 seconds
+- **Shuffle** — remix unmatched cards and wipe bot memory
 
-## Tech Stack
-- HTML5, CSS3, Vanilla JS.
+World ID is **optional**. The game is playable in any browser. If you open it inside World App, MiniKit can offer a device-level verify without blocking the lobby.
+
+## Stack
+
+Vanilla HTML / CSS / JS, static on Vercel. PWA manifest + offline cache. No backend, no secrets.
+
+## Deploy
+
+The GitHub repo `obengfrancisjr/LOM` is linked to the Vercel project `lom` (production branch `main`). Push to `main` and Vercel rebuilds https://lom-lyart.vercel.app/.
+
+## World Mini App
+
+To list this as a World Mini App you still need a Developer Portal app + action `play-lom`. The client already calls MiniKit when it is installed. No World `app_id` is hardcoded.
+
+## Local
+
+Serve the folder over HTTP (not only `file://`) if you want the service worker:
+
+```bash
+npx --yes serve .
+```
