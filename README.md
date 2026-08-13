@@ -1,17 +1,17 @@
 # League of Memory (LOM)
 
-A futuristic, mobile-first memory arena: you vs 1–5 AI opponents. Matched pairs stay face-up on the table. Chain combos, earn powers every 2 matches, 7-second turns.
+A futuristic, mobile-first memory arena: you vs 1–5 AI opponents. Matched pairs stay face-up on the table. Chain combos, earn powers every 2 matches. Arena is 6×6 with a 7s timer; Practice is 4×4 with a first-run coach.
 
 Live: https://lom-lyart.vercel.app/
 
 ## Play
 
 1. Open the live URL or `index.html`.
-2. Pick a callsign, opponent count, and difficulty.
+2. Pick Arena 6×6 or Practice 4×4, then a callsign, opponent count, and difficulty.
 3. Match pairs. A hit scores 10 × combo and keeps your turn (timer refills). A miss or timeout rotates play. You start with one random power and earn another every 2 matches.
 
 Powers:
-- **Block** — freeze the next opponent
+- **Block** — tap a rival to freeze them
 - **Scanner** — flash two hidden pairs for 3 seconds
 - **Shuffle** — remix unmatched cards and wipe bot memory
 
