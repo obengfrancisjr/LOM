@@ -1,6 +1,6 @@
 # League of Memory (LOM)
 
-A futuristic, mobile-first memory arena: you vs 1–5 AI opponents. Matched pairs stay face-up on the table. Chain combos, earn powers every 2 matches. Arena is 6×6 with a 7s timer; Practice is 4×4 with a first-run coach.
+A futuristic, mobile-first memory arena: you vs 1–5 AI opponents. Matched pairs stay face-up on the table. Chain combos, earn powers every 2 matches. Arena is 6×6 (9s on Easy, 7s on Normal/Hard); Practice is 4×4 with a first-run coach and an 11s timer. Easy bots forget, flub known pairs, and do not start with powers.
 
 Live: https://lom-lyart.vercel.app/
 
