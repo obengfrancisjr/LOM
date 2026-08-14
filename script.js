@@ -14,7 +14,7 @@ const CONFIG = {
     POWER_EVERY_MATCHES: 2,
     STORAGE_KEY: 'lom.v2',
     PLAYER_COLORS: ['#00f3ff', '#bc13fe', '#00ff9d', '#ffb800', '#ff6b6b', '#4dabf7'],
-    PRACTICE: { GRID_SIZE: 4, PAIRS: 8, TURN_DURATION_MS: 10000 },
+    PRACTICE: { GRID_SIZE: 4, PAIRS: 8, TURN_DURATION_MS: 11000 },
     ENDGAME_OPEN: 6,
 };
 
@@ -30,9 +30,9 @@ const PHASE = {
 };
 
 const DIFFICULTY = {
-    easy: { memory: 0.42, botMs: 1700, usePower: 0.1, forget: 0.25 },
-    normal: { memory: 0.8, botMs: 1200, usePower: 0.25, forget: 0.08 },
-    hard: { memory: 0.97, botMs: 750, usePower: 0.42, forget: 0.02 },
+    easy:   { memory: 0.16, botMs: 2400, usePower: 0.03, forget: 0.55, flub: 0.48, missMemory: 0.18, cap: 4 },
+    normal: { memory: 0.52, botMs: 1550, usePower: 0.18, forget: 0.16, flub: 0.16, missMemory: 0.50, cap: 8 },
+    hard:   { memory: 0.92, botMs: 780,  usePower: 0.40, forget: 0.03, flub: 0.04, missMemory: 0.92, cap: 14 },
 };
 
 const BOT_NAMES = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Omega'];
@@ -257,7 +257,7 @@ class Game {
         this.pending = [];
         this.settings = {
             name: loadSave().name || 'YOU',
-            bots: Number(loadSave().bots) || 3,
+            bots: Number(loadSave().bots) || 1,
             difficulty: loadSave().difficulty || 'normal',
             mode: loadSave().mode === 'practice' ? 'practice' : 'arena',
         };
@@ -392,7 +392,7 @@ class Game {
         const mode = this.ui.lobbyForm.querySelector('input[name="mode"]:checked')?.value === 'practice'
             ? 'practice'
             : 'arena';
-        const bots = Number(this.ui.lobbyForm.querySelector('input[name="bots"]:checked')?.value || this.settings.bots || 3);
+        const bots = Number(this.ui.lobbyForm.querySelector('input[name="bots"]:checked')?.value || this.settings.bots || 1);
         const difficulty = this.ui.lobbyForm.querySelector('input[name="diff"]:checked')?.value || this.settings.difficulty || 'normal';
         this.settings = { ...this.settings, name, bots, difficulty, mode };
         writeSave(this.settings);
@@ -429,7 +429,8 @@ class Game {
     setupPlayers() {
         const practice = this.isPractice();
         this.matchDifficulty = practice ? 'easy' : (this.settings.difficulty || 'normal');
-        const bots = practice ? 1 : Math.min(5, Math.max(1, this.settings.bots));
+        let bots = practice ? 1 : Math.min(5, Math.max(1, this.settings.bots));
+        if (!practice && this.matchDifficulty === 'easy') bots = Math.min(bots, 2);
         this.players = [
             new Player(0, this.settings.name, false, CONFIG.PLAYER_COLORS[0]),
         ];
@@ -440,11 +441,13 @@ class Game {
 
     grantStarterPower(player) {
         player.powers = { block: 0, scanner: 0, shuffle: 0 };
+        if (player.isBot && (this.isPractice() || this.matchDifficulty === 'easy')) return;
         const pick = POWER_IDS[Math.floor(Math.random() * POWER_IDS.length)];
         player.powers[pick] = 1;
     }
 
     grantRandomPower(player) {
+        if (player.isBot && (this.isPractice() || this.matchDifficulty === 'easy')) return null;
         const pick = POWER_IDS[Math.floor(Math.random() * POWER_IDS.length)];
         player.powers[pick] += 1;
         if (!player.isBot) {
@@ -512,7 +515,7 @@ class Game {
         return {
             GRID_SIZE: CONFIG.GRID_SIZE,
             PAIRS: CONFIG.PAIRS,
-            TURN_DURATION_MS: CONFIG.TURN_DURATION_MS,
+            TURN_DURATION_MS: this.matchDifficulty === 'easy' ? 9000 : CONFIG.TURN_DURATION_MS,
         };
     }
 
@@ -626,7 +629,13 @@ class Game {
         card.isFlipped = true;
         this.paintCard(index);
         this.flippedCards.push(index);
-        this.notifyBotsOfCard(index, card.icon);
+        const actor = this.getCurrentPlayer();
+        const easy = this.isPractice() || this.matchDifficulty === 'easy';
+        if (easy) {
+            if (actor?.isBot) this.rememberCard(actor, index, card.icon, 1);
+        } else {
+            this.notifyBotsOfCard(index, card.icon);
+        }
 
         if (this.flippedCards.length === 2) {
             this.setPhase(PHASE.RESOLVING);
@@ -672,9 +681,10 @@ class Game {
                 this.renderPlayers();
 
                 if (player.matches > 0 && player.matches % CONFIG.POWER_EVERY_MATCHES === 0) {
-                    this.grantRandomPower(player);
-                    this.renderPowers();
-                    AudioCtrl.playPower();
+                    if (this.grantRandomPower(player)) {
+                        this.renderPowers();
+                        AudioCtrl.playPower();
+                    }
                 }
 
                 if (this.cards.every((c) => c.isMatched)) {
@@ -699,10 +709,6 @@ class Game {
             this.toast('Miss');
             this.ui.grid.classList.add('board-miss');
             [idx1, idx2].forEach((idx) => document.getElementById(`card-${idx}`)?.classList.add('miss'));
-
-            // Bots always remember both revealed cards on a miss
-            this.notifyBotsOfCard(idx1, card1.icon, 1);
-            this.notifyBotsOfCard(idx2, card2.icon, 1);
 
             this.schedule(() => {
                 if (this.turnToken !== token) return;
@@ -938,8 +944,7 @@ class Game {
 
         reveal.forEach((idx) => {
             document.getElementById(`card-${idx}`)?.classList.add('preview');
-            // Scanner intel is private: only the caster (or bots, if a bot scanned) learns
-            if (player.isBot) this.notifyBotsOfCard(idx, this.cards[idx].icon, 1);
+            if (player.isBot) this.rememberCard(player, idx, this.cards[idx].icon, 1);
         });
         this.toast('Scanning sector…');
         this.ui.powerHint.textContent = 'scanner live';
@@ -993,7 +998,8 @@ class Game {
                 this.ui.turnName.textContent = `${bot.name}'s turn`;
 
                 const known = this.findMatchInMemory(bot);
-                if (known) {
+                const useKnown = known && Math.random() >= (profile.flub || 0);
+                if (useKnown) {
                     this.flipCard(known[0]);
                     this.schedule(() => {
                         if (this.turnToken !== token) return;
@@ -1011,7 +1017,7 @@ class Game {
 
                 this.schedule(() => {
                     if (this.turnToken !== token) return;
-                    if (remembered !== null) {
+                    if (remembered !== null && Math.random() >= (profile.flub || 0)) {
                         this.flipCard(remembered);
                         return;
                     }
@@ -1023,22 +1029,29 @@ class Game {
     }
 
     botProfile() {
-        const base = DIFFICULTY[this.matchDifficulty] || DIFFICULTY.normal;
+        const base = { ...(DIFFICULTY[this.matchDifficulty] || DIFFICULTY.normal) };
+        if (this.isPractice()) {
+            base.flub = Math.min(0.62, (base.flub || 0) + 0.12);
+            base.usePower = 0;
+            base.cap = Math.min(base.cap || 4, 3);
+            return base;
+        }
         const open = this.openIndices().length;
-        if (open > CONFIG.ENDGAME_OPEN) return base;
+        if (this.matchDifficulty === 'easy' || open > CONFIG.ENDGAME_OPEN) return base;
         return {
             ...base,
-            memory: Math.max(0.28, base.memory * 0.72),
-            forget: Math.min(0.45, base.forget + 0.12),
+            memory: Math.min(0.99, base.memory + 0.12),
+            flub: Math.max(0, (base.flub || 0) - 0.08),
         };
     }
 
     maybeBotPower(bot, profile) {
+        if (!profile.usePower) return false;
         const persona = BOT_PERSONAS[bot.name] || { prefer: 'scanner', useMult: 1 };
         if (Math.random() > profile.usePower * persona.useMult) return false;
 
         const open = this.openIndices().length;
-        if (open <= CONFIG.ENDGAME_OPEN && bot.powers.scanner && this.hiddenPairCount()) {
+        if (this.matchDifficulty !== 'easy' && open <= CONFIG.ENDGAME_OPEN && bot.powers.scanner && this.hiddenPairCount()) {
             return this.consumePower(bot, 'scanner');
         }
         if (bot.powers[persona.prefer]) {
@@ -1072,14 +1085,24 @@ class Game {
         return Object.values(groups).filter((n) => n >= 2).length;
     }
 
+    rememberCard(bot, index, icon, rate = 1) {
+        if (!bot?.isBot) return;
+        if (Math.random() >= rate) return;
+        bot.memory.set(index, icon);
+        const cap = this.botProfile().cap || 12;
+        while (bot.memory.size > cap) {
+            const keys = [...bot.memory.keys()];
+            bot.memory.delete(keys[Math.floor(Math.random() * keys.length)]);
+        }
+    }
+
     notifyBotsOfCard(index, icon, forceRate = null) {
         const profile = this.botProfile();
         const rate = forceRate == null ? profile.memory : forceRate;
         this.players.forEach((p) => {
             if (!p.isBot) return;
-            if (Math.random() < rate) p.memory.set(index, icon);
-            // Occasional forget on easy/normal
-            if (p.memory.size > 8 && Math.random() < profile.forget) {
+            this.rememberCard(p, index, icon, rate);
+            if (p.memory.size && Math.random() < profile.forget) {
                 const keys = [...p.memory.keys()];
                 p.memory.delete(keys[Math.floor(Math.random() * keys.length)]);
             }

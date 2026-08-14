@@ -1,4 +1,4 @@
-const CACHE = 'lom-v4';
+const CACHE = 'lom-v5';
 const ASSETS = [
   './',
   './index.html',
@@ -6,6 +6,7 @@ const ASSETS = [
   './script.js',
   './manifest.json',
   './assets/icon.svg',
+  './assets/card-back.svg',
 ];
 
 self.addEventListener('install', (event) => {
