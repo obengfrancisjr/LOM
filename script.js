@@ -8,9 +8,10 @@ const CONFIG = {
     PAIRS: 18,
     TURN_DURATION_MS: 7000,
     MATCH_POINTS: 10,
-    REVEAL_DELAY_MS: 850,
+    REVEAL_DELAY_MS: 420,
     SCAN_MS: 3000,
-    BOT_TELEGRAPH_MS: 700,
+    BOT_TELEGRAPH_MS: 160,
+    BOT_FLIP_MS: 160,
     POWER_EVERY_MATCHES: 2,
     STORAGE_KEY: 'lom.v2',
     PLAYER_COLORS: ['#00f3ff', '#bc13fe', '#8fd9b4', '#e0b86a', '#e05a7a', '#7ab8f0'],
@@ -30,9 +31,9 @@ const PHASE = {
 };
 
 const DIFFICULTY = {
-    easy:   { memory: 0.16, botMs: 2400, usePower: 0.03, forget: 0.55, flub: 0.48, missMemory: 0.18, cap: 4 },
-    normal: { memory: 0.52, botMs: 1550, usePower: 0.18, forget: 0.16, flub: 0.16, missMemory: 0.50, cap: 8 },
-    hard:   { memory: 0.92, botMs: 780,  usePower: 0.40, forget: 0.03, flub: 0.04, missMemory: 0.92, cap: 14 },
+    easy:   { memory: 0.16, botMs: 700, usePower: 0.03, forget: 0.55, flub: 0.48, missMemory: 0.18, cap: 4 },
+    normal: { memory: 0.52, botMs: 420, usePower: 0.18, forget: 0.16, flub: 0.16, missMemory: 0.50, cap: 8 },
+    hard:   { memory: 0.92, botMs: 240,  usePower: 0.40, forget: 0.03, flub: 0.04, missMemory: 0.92, cap: 14 },
 };
 
 const BOT_NAMES = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Omega'];
@@ -115,8 +116,13 @@ function shuffleInPlace(arr) {
     return arr;
 }
 
-function haptic(ms) {
-    try { navigator.vibrate?.(ms); } catch { /* no haptic */ }
+function haptic(pattern) {
+    try {
+        if (!pattern || !navigator.vibrate) return;
+        navigator.vibrate(pattern);
+    } catch {
+        /* no haptic hardware */
+    }
 }
 
 function loadSave() {
@@ -151,6 +157,7 @@ class SoundEngine {
         this.ctx = null;
         this.masterGain = null;
         this.muted = Boolean(loadSave().muted);
+        this.voice = 0.2;
     }
 
     ensure() {
@@ -159,7 +166,7 @@ class SoundEngine {
         if (!Ctx) return;
         this.ctx = new Ctx();
         this.masterGain = this.ctx.createGain();
-        this.masterGain.gain.value = this.muted ? 0 : 0.28;
+        this.masterGain.gain.value = this.muted ? 0 : this.voice;
         this.masterGain.connect(this.ctx.destination);
     }
 
@@ -171,46 +178,70 @@ class SoundEngine {
     setMuted(muted) {
         this.muted = muted;
         this.ensure();
-        if (this.masterGain) this.masterGain.gain.value = muted ? 0 : 0.28;
+        if (this.masterGain) this.masterGain.gain.value = muted ? 0 : this.voice;
         writeSave({ muted });
     }
 
-    playTone(freq, type, duration, slideTo = null) {
+    later(ms, fn) {
+        window.setTimeout(fn, ms);
+    }
+
+    playTone(freq, type, duration, { slideTo = null, peak = 0.45, delay = 0 } = {}) {
         if (this.muted) return;
         this.ensure();
         if (!this.ctx) return;
+        const t0 = this.ctx.currentTime + delay;
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         osc.type = type;
-        osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+        osc.frequency.setValueAtTime(freq, t0);
         if (slideTo) {
-            osc.frequency.exponentialRampToValueAtTime(Math.max(slideTo, 1), this.ctx.currentTime + duration);
+            osc.frequency.exponentialRampToValueAtTime(Math.max(slideTo, 20), t0 + duration);
         }
-        gain.gain.setValueAtTime(0.9, this.ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
         osc.connect(gain);
         gain.connect(this.masterGain);
-        osc.start();
-        osc.stop(this.ctx.currentTime + duration);
+        osc.start(t0);
+        osc.stop(t0 + duration + 0.02);
     }
 
-    playFlip() { this.playTone(820, 'sine', 0.09, 1250); }
+    playFlip() {
+        this.playTone(392, 'sine', 0.07, { peak: 0.22 });
+        this.playTone(196, 'sine', 0.08, { peak: 0.1 });
+    }
+
     playMatch() {
-        this.playTone(440, 'triangle', 0.25);
-        setTimeout(() => this.playTone(554, 'triangle', 0.25), 90);
-        setTimeout(() => this.playTone(659, 'triangle', 0.35), 180);
+        this.playTone(330, 'triangle', 0.16, { peak: 0.38 });
+        this.playTone(494, 'sine', 0.22, { peak: 0.28, delay: 0.07 });
     }
-    playMiss() { this.playTone(150, 'sawtooth', 0.18, 55); }
-    playPower() { this.playTone(210, 'square', 0.45, 780); }
+
+    playMiss() {
+        this.playTone(196, 'sine', 0.22, { slideTo: 98, peak: 0.3 });
+    }
+
+    playPower() {
+        this.playTone(392, 'sine', 0.28, { peak: 0.28 });
+        this.playTone(588, 'triangle', 0.32, { peak: 0.18, delay: 0.04 });
+    }
+
     playCombo(level) {
-        const base = 520 + Math.min(level, 6) * 60;
-        this.playTone(base, 'square', 0.2);
-        setTimeout(() => this.playTone(base * 1.25, 'square', 0.25), 80);
+        const n = Math.min(level, 5);
+        this.playTone(330 + n * 28, 'triangle', 0.12, { peak: 0.34 });
+        this.playTone(494 + n * 36, 'sine', 0.18, { peak: 0.3, delay: 0.06 });
+        this.playTone(660 + n * 40, 'triangle', 0.22, { peak: 0.22, delay: 0.12 });
     }
+
     playWin() {
-        [523, 659, 783, 1046].forEach((freq, i) => {
-            setTimeout(() => this.playTone(freq, 'square', 0.32), i * 130);
+        [330, 392, 494, 660].forEach((freq, i) => {
+            this.playTone(freq, 'triangle', 0.28, { peak: 0.28, delay: i * 0.11 });
         });
+    }
+
+    playLose() {
+        this.playTone(392, 'sine', 0.36, { slideTo: 164, peak: 0.28 });
+        this.playTone(247, 'triangle', 0.4, { peak: 0.14, delay: 0.08 });
     }
 }
 
@@ -301,6 +332,7 @@ class Game {
         this.blockedPlayerIndex = -1;
         this.coachStep = 0;
         this.coachOpen = false;
+        this.botRush = false;
         this.matchDifficulty = 'easy';
         this.timer = null;
         this.timerRaf = null;
@@ -690,6 +722,7 @@ class Game {
         this.unflipOrphans();
         this.combo = 0;
         this.hideCombo();
+        if (!this.getCurrentPlayer()?.isBot) this.botRush = false;
         const token = ++this.turnToken;
 
         if (this.cards.every((c) => c.isMatched)) {
@@ -712,7 +745,7 @@ class Game {
                 if (this.turnToken !== token) return;
                 frozen.frozen = false;
                 this.nextTurn();
-            }, 1400);
+            }, this.botRush ? 220 : 420);
             return;
         }
 
@@ -829,7 +862,7 @@ class Game {
 
             this.showCombo(this.combo);
             this.floatPoints(points, player.color);
-            haptic(this.combo > 1 ? [10, 30, 18] : 16);
+            haptic(this.combo > 1 ? [12, 40, 16, 48] : 22);
             this.toast(this.combo > 1 ? `Combo x${this.combo} · +${points}` : `Match · +${points}`);
 
             this.schedule(() => {
@@ -865,10 +898,11 @@ class Game {
                     this.setPhase(PHASE.IDLE);
                     this.startTimer(token, true);
                 }
-            }, 480);
+            }, player.isBot ? 200 : 320);
         } else {
             AudioCtrl.playMiss();
-            haptic(12);
+            haptic(28);
+            if (!player.isBot) this.botRush = true;
             this.combo = 0;
             this.hideCombo();
             this.toast('Miss');
@@ -890,7 +924,7 @@ class Game {
                 this.paintCard(idx2);
                 this.flippedCards = [];
                 this.endTurn();
-            }, CONFIG.REVEAL_DELAY_MS);
+            }, player.isBot ? 200 : CONFIG.REVEAL_DELAY_MS);
         }
     }
 
@@ -898,7 +932,6 @@ class Game {
         this.stopTimer();
         this.clearPending();
         this.setPhase(PHASE.GAMEOVER);
-        AudioCtrl.playWin();
 
         if (this.isPractice()) writeSave({ practiceDone: true, arenaNight: true });
 
@@ -909,6 +942,8 @@ class Game {
             || Number(a.isBot) - Number(b.isBot)
         );
         const winner = ranked[0];
+        if (winner && !winner.isBot) AudioCtrl.playWin();
+        else AudioCtrl.playLose();
         const runner = ranked[1];
         const isDraw = Boolean(runner) && winner.score === runner.score && winner.matches === runner.matches;
         const human = this.players.find((p) => !p.isBot);
@@ -1237,6 +1272,8 @@ class Game {
         const profile = this.botProfile();
 
         this.ui.turnName.textContent = `${bot.name}'s turn`;
+        const think = this.botThinkMs();
+        const gap = this.botFlipGap();
         this.schedule(() => {
             if (this.turnToken !== token || this.getCurrentPlayer() !== bot) return;
 
@@ -1252,7 +1289,7 @@ class Game {
                     this.schedule(() => {
                         if (this.turnToken !== token) return;
                         this.flipCard(known[1]);
-                    }, 420);
+                    }, gap);
                     return;
                 }
 
@@ -1280,9 +1317,27 @@ class Game {
                     }
                     this.unflipOrphans();
                     this.endTurn();
-                }, 620);
-            }, CONFIG.BOT_TELEGRAPH_MS);
-        }, profile.botMs);
+                }, gap);
+            }, this.botTelegraphMs());
+        }, think);
+    }
+
+    botRushing() {
+        const nBots = this.players.filter((p) => p.isBot).length;
+        return Boolean(this.botRush) || nBots >= 3;
+    }
+
+    botThinkMs() {
+        const base = (this.botProfile().botMs) || 420;
+        return this.botRushing() ? Math.min(160, Math.round(base * 0.35)) : base;
+    }
+
+    botTelegraphMs() {
+        return this.botRushing() ? 60 : CONFIG.BOT_TELEGRAPH_MS;
+    }
+
+    botFlipGap() {
+        return this.botRushing() ? 90 : CONFIG.BOT_FLIP_MS;
     }
 
     botProfile() {

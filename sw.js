@@ -1,4 +1,4 @@
-const CACHE = 'lom-v8';
+const CACHE = 'lom-v9';
 const ASSETS = [
   './',
   './index.html',
