@@ -8,10 +8,11 @@ const CONFIG = {
     PAIRS: 18,
     TURN_DURATION_MS: 7000,
     MATCH_POINTS: 10,
-    REVEAL_DELAY_MS: 420,
+    REVEAL_DELAY_MS: 560,
     SCAN_MS: 3000,
-    BOT_TELEGRAPH_MS: 160,
-    BOT_FLIP_MS: 160,
+    BOT_TELEGRAPH_MS: 140,
+    BOT_FLIP_MS: 560,
+    FLIP_MS: 500,
     POWER_EVERY_MATCHES: 2,
     STORAGE_KEY: 'lom.v2',
     PLAYER_COLORS: ['#00f3ff', '#bc13fe', '#8fd9b4', '#e0b86a', '#e05a7a', '#7ab8f0'],
@@ -857,13 +858,19 @@ class Game {
             player.score += points;
             player.matches += 1;
 
-            if (this.combo > 1) AudioCtrl.playCombo(this.combo);
-            else AudioCtrl.playMatch();
-
             this.showCombo(this.combo);
             this.floatPoints(points, player.color);
-            haptic(this.combo > 1 ? [12, 40, 16, 48] : 22);
             this.toast(this.combo > 1 ? `Combo x${this.combo} · +${points}` : `Match · +${points}`);
+            this.schedule(() => {
+                if (this.turnToken !== token) return;
+                if (this.combo > 1) {
+                    AudioCtrl.playCombo(this.combo);
+                    haptic([14, 36, 18, 52]);
+                } else {
+                    AudioCtrl.playMatch();
+                    haptic(24);
+                }
+            }, 180);
 
             this.schedule(() => {
                 if (this.turnToken !== token) return;
@@ -898,11 +905,14 @@ class Game {
                     this.setPhase(PHASE.IDLE);
                     this.startTimer(token, true);
                 }
-            }, player.isBot ? 200 : 320);
+            }, player.isBot ? 420 : 480);
         } else {
-            AudioCtrl.playMiss();
-            haptic(28);
             if (!player.isBot) this.botRush = true;
+            this.schedule(() => {
+                if (this.turnToken !== token) return;
+                AudioCtrl.playMiss();
+                haptic(28);
+            }, 180);
             this.combo = 0;
             this.hideCombo();
             this.toast('Miss');
@@ -924,7 +934,7 @@ class Game {
                 this.paintCard(idx2);
                 this.flippedCards = [];
                 this.endTurn();
-            }, player.isBot ? 200 : CONFIG.REVEAL_DELAY_MS);
+            }, CONFIG.REVEAL_DELAY_MS);
         }
     }
 
@@ -1329,15 +1339,17 @@ class Game {
 
     botThinkMs() {
         const base = (this.botProfile().botMs) || 420;
-        return this.botRushing() ? Math.min(160, Math.round(base * 0.35)) : base;
+        // Rush only the wait BEFORE the first card, never the card itself.
+        return this.botRushing() ? Math.min(180, Math.round(base * 0.4)) : base;
     }
 
     botTelegraphMs() {
-        return this.botRushing() ? 60 : CONFIG.BOT_TELEGRAPH_MS;
+        return this.botRushing() ? 80 : CONFIG.BOT_TELEGRAPH_MS;
     }
 
     botFlipGap() {
-        return this.botRushing() ? 90 : CONFIG.BOT_FLIP_MS;
+        // Readable hold: flip animation + a beat with the seal face-up.
+        return CONFIG.BOT_FLIP_MS;
     }
 
     botProfile() {
