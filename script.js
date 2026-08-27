@@ -543,12 +543,12 @@ class Game {
 
     canHumanAct() {
         const p = this.getCurrentPlayer();
-        return Boolean(p) && !p.isBot && this.phase === PHASE.IDLE;
+        return Boolean(p) && !p.isBot && this.phase === PHASE.IDLE && !this.coachOpen;
     }
 
     canHumanFlip() {
         const p = this.getCurrentPlayer();
-        if (!p || p.isBot) return false;
+        if (!p || p.isBot || this.coachOpen) return false;
         if (this.phase === PHASE.IDLE) return true;
         return this.phase === PHASE.FLIPPING && this.flippedCards.length < 2;
     }
@@ -595,7 +595,8 @@ class Game {
     teardown() {
         this.stopTimer();
         this.clearPending();
-        this.hideCoach(false);
+        this.coachOpen = false;
+        this.ui.coach?.classList.add('hidden');
         this.scanning = false;
         if (this.phase === PHASE.TARGETING) this.phase = PHASE.IDLE;
         this.turnToken += 1;
@@ -627,9 +628,7 @@ class Game {
         this.maybeShowCoach();
         if (this.coachOpen) {
             this.setPhase(PHASE.IDLE);
-            this.ui.turnName.textContent = 'YOUR TURN';
             this.setTimerDisplay(this.board().TURN_DURATION_MS / 1000, 1);
-            this.toast('Your move');
             return;
         }
         this.startTurn();
@@ -685,6 +684,7 @@ class Game {
     }
 
     startTurn() {
+        if (this.coachOpen) return;
         this.stopTimer();
         this.clearPending();
         this.unflipOrphans();
@@ -1624,9 +1624,7 @@ class Game {
         if (markSeen) writeSave({ seenCoach: true });
         if (wasOpen && this.cards.length && this.phase !== PHASE.LOBBY && this.phase !== PHASE.GAMEOVER) {
             this.startTurn();
-            return;
         }
-        this.resumeTimer();
     }
 
     syncMuteButton() {

@@ -21,7 +21,7 @@ World ID is **optional** and never blocks the lobby. Play in any browser. If Wor
 
 ## Stack
 
-Vanilla HTML / CSS / JS, static on Vercel. PWA manifest + same-origin offline cache (`lom-v7`). System fonts. No backend, no secrets, no Google Fonts / jsDelivr runtime.
+Vanilla HTML / CSS / JS, static on Vercel. PWA manifest + same-origin offline cache (`lom-v8`). System fonts. No backend, no secrets, no Google Fonts / jsDelivr runtime.
 
 ## Deploy
 
