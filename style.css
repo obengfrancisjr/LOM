@@ -210,7 +210,8 @@ body {
 .best-score { margin-top: 10px; color: #888; font-size: 0.86rem; }
 [hidden], .hidden { display: none !important; }
 
-.coach-overlay { position: absolute; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: rgba(7,7,12,0.62); backdrop-filter: blur(6px); padding: 18px; }
+.coach-overlay { position: absolute; inset: 0; z-index: 40; display: none; align-items: center; justify-content: center; background: rgba(7,7,12,0.62); backdrop-filter: blur(6px); padding: 18px; }
+.coach-overlay:not(.hidden) { display: flex; }
 .coach-card { max-width: 360px; width: 100%; background: #12121a; border: 1px solid var(--glass-border); border-radius: 16px; padding: 18px 18px 16px; text-align: center; }
 .coach-card .eyebrow { color: var(--accent-warning); }
 .coach-card h2 { font-family: var(--font-display); font-size: 1.05rem; margin: 6px 0 8px; }

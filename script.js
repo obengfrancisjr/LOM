@@ -300,6 +300,7 @@ class Game {
         this.bestComboRun = 0;
         this.blockedPlayerIndex = -1;
         this.coachStep = 0;
+        this.coachOpen = false;
         this.matchDifficulty = 'easy';
         this.timer = null;
         this.timerRaf = null;
@@ -412,6 +413,8 @@ class Game {
 
     returnToLobby() {
         this.teardown();
+        this.coachOpen = false;
+        this.ui.coach?.classList.add('hidden');
         this.ui.modal.classList.add('hidden');
         this.ui.startOverlay.classList.remove('hidden');
         this.setPhase(PHASE.LOBBY);
@@ -622,6 +625,13 @@ class Game {
         this.syncModeFields();
         this.ui.app?.setAttribute('data-mode', this.isPractice() ? 'practice' : 'arena');
         this.maybeShowCoach();
+        if (this.coachOpen) {
+            this.setPhase(PHASE.IDLE);
+            this.ui.turnName.textContent = 'YOUR TURN';
+            this.setTimerDisplay(this.board().TURN_DURATION_MS / 1000, 1);
+            this.toast('Your move');
+            return;
+        }
         this.startTurn();
     }
 
@@ -927,6 +937,7 @@ class Game {
     }
 
     shouldPauseTimer() {
+        if (this.coachOpen) return true;
         if (document.hidden) return true;
         if (this.phase === PHASE.TARGETING) return true;
         if (this.scanning) return true;
@@ -1584,6 +1595,7 @@ class Game {
         if (loadSave().seenCoach) return;
         if (!this.ui.coach) return;
         this.coachStep = 0;
+        this.coachOpen = true;
         this.paintCoach();
         this.ui.coach.classList.remove('hidden');
     }
@@ -1606,8 +1618,14 @@ class Game {
     }
 
     hideCoach(markSeen) {
+        const wasOpen = this.coachOpen;
+        this.coachOpen = false;
         this.ui.coach?.classList.add('hidden');
         if (markSeen) writeSave({ seenCoach: true });
+        if (wasOpen && this.cards.length && this.phase !== PHASE.LOBBY && this.phase !== PHASE.GAMEOVER) {
+            this.startTurn();
+            return;
+        }
         this.resumeTimer();
     }
 
