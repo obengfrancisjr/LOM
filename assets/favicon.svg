@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Night Match">
+  <defs>
+    <linearGradient id="night" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#101018"/>
+      <stop offset="100%" stop-color="#07070c"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#00f3ff"/>
+      <stop offset="100%" stop-color="#bc13fe"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="url(#night)"/>
+  <circle cx="256" cy="256" r="188" fill="none" stroke="url(#rim)" stroke-width="6" opacity=".7"/>
+  <g transform="rotate(-16 256 256)" fill="none" stroke="#c8c4b8" stroke-width="14" stroke-linejoin="round">
+    <rect x="168" y="148" width="132" height="176" rx="16"/>
+  </g>
+  <g transform="rotate(18 256 256)" fill="none" stroke="#00f3ff" stroke-width="14" stroke-linejoin="round">
+    <rect x="212" y="148" width="132" height="176" rx="16"/>
+  </g>
+  <path fill="#e8e2d4" d="M292 214c-28 8-48 34-48 66s20 58 48 66c-38-4-68-36-68-66s30-62 68-66z"/>
+  <circle cx="318" cy="232" r="8" fill="#00f3ff"/>
+</svg>

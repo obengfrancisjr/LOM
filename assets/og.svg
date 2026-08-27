@@ -1,5 +1,30 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="League of Memory">
-  <rect width="1200" height="630" fill="#050510"/>
-  <text x="600" y="300" text-anchor="middle" font-family="Orbitron, sans-serif" font-size="96" fill="#00f3ff">LOM</text>
-  <text x="600" y="380" text-anchor="middle" font-family="Rajdhani, sans-serif" font-size="36" fill="#bc13fe">League of Memory</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="Night Match — League of Memory">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0c0c14"/>
+      <stop offset="100%" stop-color="#07070c"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#00f3ff"/>
+      <stop offset="100%" stop-color="#bc13fe"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <line x1="72" y1="72" x2="72" y2="558" stroke="url(#rim)" stroke-width="2" opacity=".55"/>
+  <circle cx="250" cy="315" r="168" fill="#0c0c14"/>
+  <circle cx="250" cy="315" r="168" fill="none" stroke="url(#rim)" stroke-width="2.5" opacity=".6"/>
+  <g transform="translate(-6 59) rotate(-16 256 256)" fill="none" stroke="#c8c4b8" stroke-width="9" stroke-linejoin="round">
+    <rect x="168" y="148" width="132" height="176" rx="16"/>
+  </g>
+  <g transform="translate(-6 59) rotate(18 256 256)" fill="none" stroke="#00f3ff" stroke-width="9" stroke-linejoin="round">
+    <rect x="212" y="148" width="132" height="176" rx="16"/>
+  </g>
+  <g transform="translate(-6 59)">
+    <path fill="#e8e2d4" d="M292 214c-28 8-48 34-48 66s20 58 48 66c-38-4-68-36-68-66s30-62 68-66z"/>
+    <circle cx="318" cy="232" r="6" fill="#00f3ff"/>
+  </g>
+  <text x="470" y="268" fill="#e8e2d4" font-family="Georgia, 'Times New Roman', serif" font-size="72" letter-spacing="4">Night Match</text>
+  <text x="472" y="328" fill="#8a8a9a" font-family="system-ui, sans-serif" font-size="28" letter-spacing="6">LEAGUE OF MEMORY</text>
+  <text x="472" y="392" fill="#6e6e7c" font-family="Georgia, serif" font-size="22">One night of championship in your pocket.</text>
+  <text x="472" y="520" fill="#4a4a58" font-family="Georgia, serif" font-size="16">per Nico da Fre</text>
 </svg>
