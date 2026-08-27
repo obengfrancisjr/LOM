@@ -1,9 +1,17 @@
-const CACHE = 'lom-v6';
+const CACHE = 'lom-v7';
 const ASSETS = [
   './',
+  './index.html',
   './style.css',
   './script.js',
   './manifest.json',
+  './assets/mark.svg',
+  './assets/favicon.svg',
+  './assets/icon-192.png',
+  './assets/icon-512.png',
+  './assets/icon-1024.png',
+  './assets/apple-touch-icon.png',
+  './assets/og.png',
 ];
 
 self.addEventListener('install', (event) => {
@@ -22,6 +30,8 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
   event.respondWith(
     fetch(event.request)
       .then((response) => {

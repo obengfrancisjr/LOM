@@ -4,25 +4,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>League of Memory — LOM</title>
-    <meta name="description" content="A futuristic memory arena. Matched pairs stay on the table. Chain combos, earn powers, outplay the bots.">
-    <meta name="theme-color" content="#050510">
+    <title>Night Match — League of Memory</title>
+    <meta name="description" content="One night of championship in your pocket. Matched pairs stay on the table. Chain combos, earn powers, outplay the bots.">
+    <meta name="theme-color" content="#07070c">
     <meta name="color-scheme" content="dark">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="LOM">
+    <meta name="apple-mobile-web-app-title" content="Night Match">
+    <meta name="world-app-id" content="">
     <link rel="manifest" href="manifest.json">
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='28' fill='%23050510'/%3E%3Crect x='10' y='10' width='108' height='108' rx='22' fill='none' stroke='%2300f3ff' stroke-width='4'/%3E%3Ctext x='64' y='78' text-anchor='middle' font-family='Orbitron,sans-serif' font-size='36' fill='%2300f3ff'%3ELOM%3C/text%3E%3C/svg%3E" type="image/svg+xml">
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="assets/icon-192.png" type="image/png" sizes="192x192">
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
     <link rel="canonical" href="https://lom-lyart.vercel.app/">
     <meta property="og:type" content="website">
-    <meta property="og:title" content="League of Memory">
-    <meta property="og:description" content="Matched pairs stay open. Combo chains, earned powers, 1–5 AI rivals.">
+    <meta property="og:title" content="Night Match — League of Memory">
+    <meta property="og:description" content="One night of championship in your pocket. Matched pairs stay open. Combo chains, earned powers.">
     <meta property="og:url" content="https://lom-lyart.vercel.app/">
-    <meta name="twitter:card" content="summary">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@300;500;700&display=swap" rel="stylesheet">
+    <meta property="og:image" content="https://lom-lyart.vercel.app/assets/og.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="https://lom-lyart.vercel.app/assets/og.png">
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -31,11 +33,11 @@
 
     <div id="start-overlay" class="modal-overlay lobby" style="opacity:1; pointer-events:auto; z-index:999;">
         <div class="modal-content lobby-card">
-            <p class="eyebrow">World Mini App · Arena</p>
-            <h1 class="glow-text title-xl">LOM</h1>
+            <img class="lobby-mark" src="assets/favicon.svg" width="64" height="64" alt="">
+            <h1 class="title-xl">Night Match</h1>
             <p class="subtitle">League of Memory</p>
             <p class="dedication">per Nico da Fre ❤️</p>
-            <p class="lede">Matched pairs stay open on the table. Chain combos, earn powers, freeze a rival you tap.</p>
+            <p class="lede">One night of championship in your pocket. Matched pairs stay open. Chain combos, earn powers, freeze a rival you tap.</p>
 
             <form id="lobby-form" class="lobby-form" autocomplete="off">
                 <label class="field">
@@ -45,24 +47,26 @@
                 </label>
 
                 <fieldset class="field">
-                    <legend>Mode</legend>
+                    <legend>Night</legend>
                     <div class="chip-row" role="radiogroup" aria-label="Board mode">
-                        <label class="chip"><input type="radio" name="mode" value="arena" checked> Arena 6×6</label>
-                        <label class="chip"><input type="radio" name="mode" value="practice"> Practice 4×4</label>
+                        <label class="chip"><input type="radio" name="mode" value="practice" checked> Practice 4×4</label>
+                        <label class="chip" id="chip-arena"><input type="radio" name="mode" value="arena"> Arena Night 6×6</label>
                     </div>
-                    <small>Practice is one Easy bot, longer timer, first-run coach.</small>
+                    <small id="arena-lock" class="lock-reason">Finish a Practice night to unlock Arena Night.</small>
                 </fieldset>
 
-                <fieldset class="field" id="arena-opts">
+                <fieldset class="field" id="arena-opts" hidden>
                     <legend>Opponents</legend>
                     <div class="chip-row" role="radiogroup" aria-label="Number of AI opponents">
-                        <label class="chip"><input type="radio" name="bots" value="1" checked> 1 bot</label>
-                        <label class="chip"><input type="radio" name="bots" value="3"> 3 bots</label>
-                        <label class="chip"><input type="radio" name="bots" value="5"> 5 bots</label>
+                        <label class="chip"><input type="radio" name="bots" value="1" checked> 1 rival</label>
+                        <label class="chip" id="chip-bots-2"><input type="radio" name="bots" value="2"> 2 rivals</label>
+                        <label class="chip advanced" id="chip-bots-3" hidden><input type="radio" name="bots" value="3"> 3 rivals</label>
+                        <label class="chip advanced" id="chip-bots-5" hidden><input type="radio" name="bots" value="5"> Gauntlet</label>
                     </div>
+                    <small id="easy-bots-hint" hidden>Easy nights are 1 or 2 rivals.</small>
                 </fieldset>
 
-                <fieldset class="field" id="diff-opts">
+                <fieldset class="field" id="diff-opts" hidden>
                     <legend>Difficulty</legend>
                     <div class="chip-row" role="radiogroup" aria-label="Bot difficulty">
                         <label class="chip"><input type="radio" name="diff" value="easy"> Easy</label>
@@ -72,10 +76,10 @@
                 </fieldset>
 
                 <div class="cta-row">
-                    <button type="submit" id="play-btn" class="neon-btn">Enter Arena</button>
-                    <button type="button" id="verify-btn" class="ghost-btn" hidden>Verify World ID</button>
+                    <button type="submit" id="play-btn" class="neon-btn">Play</button>
                 </div>
-                <p id="world-status" class="world-status" role="status"></p>
+                <p id="best-human" class="best-human"></p>
+                <p class="world-note">World ID optional inside World App.</p>
             </form>
 
             <details class="rules">
@@ -85,27 +89,35 @@
                     <li><strong>Matched pairs stay face-up</strong> on the table — use them as landmarks.</li>
                     <li>Chain matches for combo multipliers (x2, x3…). Each match also refills the timer.</li>
                     <li>Miss or timeout ends your turn. You start with one random power; earn more every 2 matches.</li>
-                    <li><strong>Block</strong> — tap a rival to freeze them. <strong>Scanner</strong> flashes two pairs. <strong>Shuffle</strong> remixes the unknown.</li>
+                    <li><strong>Block</strong> — tap a rival to freeze them. <strong>Scanner</strong> flashes two pairs for 3 seconds. <strong>Shuffle</strong> remixes the unknown.</li>
                 </ul>
             </details>
         </div>
     </div>
 
-    <div class="app-container">
+    <div class="app-container" data-mode="practice">
         <header class="game-header" role="banner">
-            <div class="brand">
-                <h1 class="glow-text">LOM</h1>
-                <button type="button" id="mute-btn" class="icon-btn" aria-pressed="false" aria-label="Mute sound">🔊</button>
+            <div class="hud-left">
+                <img class="hud-mark" src="assets/favicon.svg" width="28" height="28" alt="">
+                <div class="hud-copy">
+                    <div class="turn-name" id="turn-name">—</div>
+                    <div class="hud-meta">
+                        <span class="mode-badge" id="mode-badge">Practice</span>
+                        <span class="combo-badge hidden" id="combo-badge" aria-live="polite">Combo x1</span>
+                        <span class="verified-badge hidden" id="verified-badge">Verified</span>
+                    </div>
+                </div>
             </div>
-            <div class="hud-center">
-                <div class="turn-name" id="turn-name">—</div>
-                <div class="mode-badge hidden" id="mode-badge">DRILL 4×4</div>
-                <div class="combo-badge hidden" id="combo-badge" aria-live="polite">COMBO x1</div>
-            </div>
-            <div class="timer-block" aria-live="off">
-                <div class="timer-digits" id="timer-digits">7.0</div>
-                <div class="turn-timer-bar" role="progressbar" aria-label="Turn timer" aria-valuemin="0" aria-valuemax="7" aria-valuenow="7">
-                    <div class="timer-fill" id="timer-fill"></div>
+            <div class="hud-right">
+                <button type="button" id="mute-btn" class="icon-btn" aria-pressed="false" aria-label="Mute sound">
+                    <svg class="mute-on" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 9v6h3l5 4V5L7 9H4zm11.5 3A4.5 4.5 0 0 0 14 8.7v6.6A4.5 4.5 0 0 0 15.5 12zM14 3.2v2.1a7.8 7.8 0 0 1 0 13.4v2.1a9.9 9.9 0 0 0 0-17.6z"/></svg>
+                    <svg class="mute-off" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 9v6h3l5 4V5L7 9H4zm12.5 1.5 1.4-1.4 1.4 1.4 1.4-1.4 1.4 1.4-1.4 1.4 1.4 1.4-1.4 1.4-1.4-1.4-1.4 1.4-1.4-1.4 1.4-1.4z"/></svg>
+                </button>
+                <div class="timer-block" aria-live="off">
+                    <div class="timer-digits" id="timer-digits">11.0</div>
+                    <div class="turn-timer-bar" role="progressbar" aria-label="Turn timer" aria-valuemin="0" aria-valuemax="11" aria-valuenow="11">
+                        <div class="timer-fill" id="timer-fill"></div>
+                    </div>
                 </div>
             </div>
         </header>
@@ -114,15 +126,14 @@
 
         <main class="arena-container">
             <aside class="players-panel" id="players-panel" aria-label="Players and scores"></aside>
-
             <section class="game-grid-wrapper" aria-label="Game board">
                 <div class="float-score" id="float-score" aria-hidden="true"></div>
-                <div class="game-grid" id="game-grid" role="grid" aria-rowcount="6" aria-colcount="6"></div>
+                <div class="game-grid" id="game-grid" role="grid" aria-rowcount="4" aria-colcount="4"></div>
             </section>
         </main>
 
         <footer class="power-deck-container" role="contentinfo">
-            <div class="deck-label">Power Deck <span id="power-hint" class="power-hint"></span></div>
+            <div class="deck-label">Powers <span id="power-hint" class="power-hint"></span></div>
             <div class="power-cards" id="power-cards" role="toolbar" aria-label="Power cards"></div>
             <p class="dedication-mark" aria-hidden="true">per Nico da Fre ❤️</p>
         </footer>
@@ -150,9 +161,13 @@
                 </div>
             </div>
         </div>
+
+        <div id="sw-toast" class="sw-toast hidden" role="status">
+            New version ready
+            <button type="button" id="sw-refresh">Reload</button>
+        </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@worldcoin/minikit-js@1.9.7/dist/minikit.min.js" defer></script>
     <script src="script.js" defer></script>
 </body>
 
