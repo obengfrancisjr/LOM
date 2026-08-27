@@ -220,13 +220,24 @@ const WorldBridge = {
     installed: false,
     verified: false,
 
+    appId() {
+        const meta = document.querySelector('meta[name="world-app-id"]')?.getAttribute('content')?.trim();
+        return meta || '';
+    },
+
     init() {
         const MiniKit = window.MiniKit;
         if (!MiniKit) return false;
+        const appId = this.appId();
         try {
-            this.installed = Boolean(MiniKit.isInstalled?.());
+            if (appId && typeof MiniKit.install === 'function') {
+                const result = MiniKit.install({ appId });
+                this.installed = Boolean(result?.success || MiniKit.isInstalled?.());
+            } else {
+                this.installed = Boolean(MiniKit.isInstalled?.());
+            }
         } catch {
-            this.installed = false;
+            this.installed = Boolean(MiniKit.isInstalled?.());
         }
         return this.installed;
     },
@@ -301,12 +312,12 @@ class Game {
         this._powerSig = '';
         this.pending = [];
         const saved = loadSave();
-        const practiceDone = Boolean(saved.practiceDone);
+        const unlocked = Boolean(saved.arenaNight || saved.practiceDone);
         this.settings = {
             name: saved.name && saved.name !== 'YOU' ? saved.name : (saved.name || 'You'),
-            bots: Number(saved.bots) === 2 ? 2 : 1,
+            bots: [1, 2, 3, 5].includes(Number(saved.bots)) ? Number(saved.bots) : 1,
             difficulty: saved.difficulty || 'normal',
-            mode: saved.mode === 'arena' && practiceDone ? 'arena' : 'practice',
+            mode: saved.mode === 'arena' && unlocked ? 'arena' : 'practice',
         };
         this.ui = {
             grid: document.getElementById('game-grid'),
@@ -329,7 +340,7 @@ class Game {
             lobbyBtn: document.getElementById('lobby-btn'),
             homeBtn: document.getElementById('home-btn'),
             bestScore: document.getElementById('best-score'),
-            lobbyBest: document.getElementById('lobby-best'),
+            lobbyBest: document.getElementById('lobby-best') || document.getElementById('best-human'),
             startOverlay: document.getElementById('start-overlay'),
             lobbyForm: document.getElementById('lobby-form'),
             playerName: document.getElementById('player-name'),
@@ -340,8 +351,9 @@ class Game {
             arenaOpts: document.getElementById('arena-opts'),
             diffOpts: document.getElementById('diff-opts'),
             playBtn: document.getElementById('play-btn'),
-            modeArena: document.getElementById('mode-arena'),
-            modeHint: document.getElementById('mode-hint'),
+            modeArena: document.getElementById('mode-arena') || document.querySelector('input[name="mode"][value="arena"]'),
+            modeHint: document.getElementById('mode-hint') || document.getElementById('arena-lock'),
+            easyBotsHint: document.getElementById('easy-bots-hint'),
             coach: document.getElementById('coach-overlay'),
             coachStepEl: document.getElementById('coach-step'),
             coachTitle: document.getElementById('coach-title'),
@@ -381,7 +393,7 @@ class Game {
                 this.syncBotChips();
             });
         });
-        this.ui.verifyBtn.addEventListener('click', () => this.handleVerify());
+        this.ui.verifyBtn?.addEventListener('click', () => this.handleVerify());
         this.ui.muteBtn.addEventListener('click', () => {
             AudioCtrl.setMuted(!AudioCtrl.muted);
             this.syncMuteButton();
@@ -413,7 +425,7 @@ class Game {
     hydrateLobby() {
         const blank = !this.settings.name || this.settings.name === 'You' || this.settings.name === 'YOU';
         this.ui.playerName.value = blank ? '' : this.settings.name;
-        const bots = this.settings.bots === 2 ? '2' : '1';
+        const bots = String([1, 2, 3, 5].includes(this.settings.bots) ? this.settings.bots : 1);
         const diff = this.settings.difficulty;
         const mode = this.settings.mode === 'arena' ? 'arena' : 'practice';
         const botsInput = this.ui.lobbyForm.querySelector(`input[name="bots"][value="${bots}"]`);
@@ -429,8 +441,14 @@ class Game {
         }
     }
 
+    arenaUnlocked() {
+        const save = loadSave();
+        return Boolean(save.arenaNight || save.practiceDone);
+    }
+
     syncArenaLock() {
-        const unlocked = Boolean(loadSave().practiceDone);
+        const unlocked = this.arenaUnlocked();
+        const arenaChip = document.getElementById('chip-arena') || document.getElementById('arena-chip');
         if (this.ui.modeArena) {
             this.ui.modeArena.disabled = !unlocked;
             if (!unlocked) {
@@ -439,44 +457,44 @@ class Game {
                 if (practiceInput) practiceInput.checked = true;
             }
         }
+        arenaChip?.classList.toggle('locked', !unlocked);
         if (this.ui.modeHint) {
+            this.ui.modeHint.hidden = unlocked && this.ui.modeHint.id === 'arena-lock';
             this.ui.modeHint.textContent = unlocked
                 ? (this.isPractice()
                     ? 'Practice is one Easy bot, a longer timer, and a first-run coach.'
-                    : 'Arena Night is 6×6 versus 1–2 bots.')
-                : 'Arena Night unlocks after you finish a Practice game on this device.';
+                    : 'Arena Night is 6×6. Gauntlet is five rivals.')
+                : 'Finish a Practice night to unlock Arena Night.';
         }
         this.syncBotChips();
         this.syncModeFields();
     }
 
     syncBotChips() {
-        const easy = this.ui.lobbyForm.querySelector('input[name="diff"]:checked')?.value === 'easy';
-        const two = document.getElementById('bots-2-chip');
-        if (two) two.hidden = false;
-        if (easy) {
-            const fiveish = this.ui.lobbyForm.querySelector('input[name="bots"][value="5"]');
-            const three = this.ui.lobbyForm.querySelector('input[name="bots"][value="3"]');
-            if (fiveish) fiveish.closest('label')?.setAttribute('hidden', '');
-            if (three) three.closest('label')?.setAttribute('hidden', '');
+        const easy = (this.ui.lobbyForm.querySelector('input[name="diff"]:checked')?.value || this.settings.difficulty) === 'easy';
+        const practice = this.settings.mode === 'practice';
+        const unlocked = this.arenaUnlocked();
+        const showAdvanced = unlocked && !practice && !easy;
+        this.ui.lobbyForm.querySelectorAll('.chip.advanced').forEach((el) => {
+            el.hidden = !showAdvanced;
+            const input = el.querySelector('input');
+            if (input) input.disabled = !showAdvanced;
+        });
+        if (this.ui.easyBotsHint) this.ui.easyBotsHint.hidden = practice || !easy;
+        if (!practice && easy) {
             const selected = this.ui.lobbyForm.querySelector('input[name="bots"]:checked');
             if (selected && Number(selected.value) > 2) {
+                const two = this.ui.lobbyForm.querySelector('input[name="bots"][value="2"]');
                 const one = this.ui.lobbyForm.querySelector('input[name="bots"][value="1"]');
-                if (one) one.checked = true;
+                (two || one).checked = true;
             }
         }
     }
 
     initWorld() {
-        const ready = WorldBridge.init();
+        WorldBridge.init();
         this.syncVerifiedBadge();
-        if (ready) {
-            this.ui.verifyBtn.hidden = false;
-            this.ui.worldStatus.textContent = 'World App detected. Verify is optional.';
-        } else {
-            this.ui.verifyBtn.hidden = true;
-            this.ui.worldStatus.textContent = 'Playable in any browser. World ID is optional inside World App.';
-        }
+        if (this.ui.verifyBtn) this.ui.verifyBtn.hidden = true;
     }
 
     syncVerifiedBadge() {
@@ -484,22 +502,16 @@ class Game {
     }
 
     async handleVerify() {
-        this.ui.verifyBtn.disabled = true;
-        this.ui.worldStatus.textContent = 'Opening World ID…';
+        if (this.ui.verifyBtn) this.ui.verifyBtn.disabled = true;
         const result = await WorldBridge.verify();
-        this.ui.verifyBtn.disabled = false;
+        if (this.ui.verifyBtn) this.ui.verifyBtn.disabled = false;
         this.syncVerifiedBadge();
-        if (result.ok) this.ui.worldStatus.textContent = 'Verified. You can still play without it next time.';
-        else if (result.reason === 'not-in-world-app') {
-            this.ui.worldStatus.textContent = 'Open this URL inside World App to verify. You can still play here.';
-        } else {
-            this.ui.worldStatus.textContent = 'Verification skipped or unavailable. You can still play.';
-        }
+        return result;
     }
 
     collectSettings() {
         const name = (this.ui.playerName.value || 'You').trim().slice(0, 16) || 'You';
-        const unlocked = Boolean(loadSave().practiceDone);
+        const unlocked = this.arenaUnlocked();
         let mode = this.ui.lobbyForm.querySelector('input[name="mode"]:checked')?.value === 'arena'
             ? 'arena'
             : 'practice';
@@ -507,7 +519,8 @@ class Game {
         let bots = Number(this.ui.lobbyForm.querySelector('input[name="bots"]:checked')?.value || 1);
         const difficulty = this.ui.lobbyForm.querySelector('input[name="diff"]:checked')?.value || 'normal';
         if (mode === 'practice') bots = 1;
-        else bots = Math.min(2, Math.max(1, bots));
+        else if (difficulty === 'easy' && bots > 2) bots = 2;
+        else bots = Math.min(5, Math.max(1, bots));
         this.settings = { ...this.settings, name, bots, difficulty, mode };
         writeSave({ name, bots, difficulty, mode });
         this.syncModeFields();
@@ -548,7 +561,8 @@ class Game {
     setupPlayers() {
         const practice = this.isPractice();
         this.matchDifficulty = practice ? 'easy' : (this.settings.difficulty || 'normal');
-        const bots = practice ? 1 : Math.min(2, Math.max(1, this.settings.bots || 1));
+        let bots = practice ? 1 : Math.min(5, Math.max(1, Number(this.settings.bots) || 1));
+        if (!practice && this.matchDifficulty === 'easy') bots = Math.min(bots, 2);
         this.players = [
             new Player(0, this.settings.name, false, CONFIG.PLAYER_COLORS[0]),
         ];
@@ -643,7 +657,7 @@ class Game {
         const practice = this.isPractice();
         if (this.ui.arenaOpts) this.ui.arenaOpts.hidden = practice;
         if (this.ui.diffOpts) this.ui.diffOpts.hidden = practice;
-        if (this.ui.playBtn) this.ui.playBtn.textContent = practice ? 'Start Practice' : 'Enter Arena Night';
+        if (this.ui.playBtn) this.ui.playBtn.textContent = practice ? 'Play' : 'Enter Arena Night';
         if (this.ui.modeBadge) {
             this.ui.modeBadge.classList.toggle('hidden', !practice);
             this.ui.modeBadge.textContent = practice ? 'Practice 4×4' : 'Arena Night';
@@ -876,7 +890,7 @@ class Game {
         this.setPhase(PHASE.GAMEOVER);
         AudioCtrl.playWin();
 
-        if (this.isPractice()) writeSave({ practiceDone: true });
+        if (this.isPractice()) writeSave({ practiceDone: true, arenaNight: true });
 
         const ranked = [...this.players].sort((a, b) =>
             b.score - a.score
@@ -1134,6 +1148,7 @@ class Game {
         if (!caster.isBot && this.phase !== PHASE.TARGETING) return false;
         caster.powers.block -= 1;
         this.blockedPlayerIndex = targetIndex;
+        target.frozen = true;
         AudioCtrl.playPower();
         haptic(18);
         if (this.phase === PHASE.TARGETING) this.setPhase(PHASE.IDLE);
@@ -1500,10 +1515,10 @@ class Game {
                 });
             }
             el.innerHTML = `
-                <div class="player-name">${escapeHtml(p.name)}</div>
-                <div class="player-score">${p.score}</div>
-                ${p.isBot ? '<span class="bot-tag">BOT</span>' : ''}
-                ${willFreeze ? '<div class="freeze-tag">FROZEN</div>' : ''}`;
+                <span class="player-pip" aria-hidden="true"></span>
+                <span class="player-name">${escapeHtml(p.name)}</span>
+                <span class="player-score">${p.score}</span>
+                ${willFreeze ? '<span class="freeze-tag">frozen</span>' : ''}`;
             frag.appendChild(el);
         });
         this.ui.players.replaceChildren(frag);
@@ -1606,7 +1621,17 @@ class Game {
 function registerWorker() {
     if (!('serviceWorker' in navigator)) return;
     if (!window.location.protocol.startsWith('http')) return;
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js').then((reg) => {
+        reg.addEventListener('updatefound', () => {
+            const sw = reg.installing;
+            sw?.addEventListener('statechange', () => {
+                if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+                    document.getElementById('sw-toast')?.classList.remove('hidden');
+                }
+            });
+        });
+    }).catch(() => {});
+    document.getElementById('sw-refresh')?.addEventListener('click', () => location.reload());
 }
 
 document.addEventListener('DOMContentLoaded', () => {

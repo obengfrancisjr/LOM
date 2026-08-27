@@ -208,7 +208,7 @@ body {
 .standings { display: flex; justify-content: space-between; gap: 10px; margin: 8px 0; padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,0.03); border-left: 3px solid var(--p, #555); font-size: 0.88rem; text-align: left; }
 .standings.winner { color: var(--accent-success); font-weight: 700; }
 .best-score { margin-top: 10px; color: #888; font-size: 0.86rem; }
-.hidden { display: none !important; }
+[hidden], .hidden { display: none !important; }
 
 .coach-overlay { position: absolute; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: rgba(7,7,12,0.62); backdrop-filter: blur(6px); padding: 18px; }
 .coach-card { max-width: 360px; width: 100%; background: #12121a; border: 1px solid var(--glass-border); border-radius: 16px; padding: 18px 18px 16px; text-align: center; }
